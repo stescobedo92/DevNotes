@@ -49,6 +49,9 @@ public interface INoteIndex : IAsyncDisposable
     Task<IReadOnlyList<NoteSummary>> ListAsync(NoteListQuery query, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SearchHit>> SearchAsync(SearchQuery query, CancellationToken cancellationToken);
+
+    /// <summary>Projects, tags and types in use, each with its number of notes, sorted by count then value.</summary>
+    Task<NoteFacets> GetFacetsAsync(CancellationToken cancellationToken);
 }
 
 public interface INoteIndexFactory

@@ -115,6 +115,7 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
         ];
         SelectedSort = SortOptions[0];
         SearchText = string.Empty;
+        Filter = NoteFilter.Empty;
         Items = [];
     }
 
@@ -128,6 +129,11 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial string SearchText { get; set; }
+
+    /// <summary>Structured filter (the sidebar selection) combined with whatever the search text says.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFilter))]
+    public partial NoteFilter Filter { get; set; }
 
     [ObservableProperty]
     public partial NoteSortOption SelectedSort { get; set; }
@@ -158,6 +164,8 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
     public bool HasNoResults => State == NoteListState.NoResults;
 
     public bool IsNoVault => State == NoteListState.NoVault;
+
+    public bool HasFilter => !Filter.IsEmpty;
 
     public NoteSortOrder SortOrder
     {
@@ -244,7 +252,7 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
         try
         {
             var limit = string.IsNullOrWhiteSpace(SearchText) ? ResultLimit : SearchResultLimit;
-            var result = await session.Queries.QueryAsync(SearchText, SelectedSort.Order, limit, token);
+            var result = await session.Queries.QueryAsync(SearchText, Filter, SelectedSort.Order, limit, token);
             if (version != Volatile.Read(ref _queryVersion))
             {
                 return; // A newer query superseded this one.
@@ -299,6 +307,8 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
     }
 
     partial void OnSearchTextChanged(string value) => _ = RefreshAsync();
+
+    partial void OnFilterChanged(NoteFilter value) => _ = RefreshAsync();
 
     partial void OnSelectedSortChanged(NoteSortOption value)
     {
