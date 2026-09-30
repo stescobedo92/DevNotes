@@ -1,0 +1,12 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:res="using:DevNotes.Desktop.Resources"
+        x:Class="DevNotes.Desktop.Views.MainWindow"
+        Title="{x:Static res:Strings.AppName}"
+        Width="1280" Height="800"
+        MinWidth="720" MinHeight="480">
+  <TextBlock x:Name="Placeholder"
+             Text="{x:Static res:Strings.AppName}"
+             HorizontalAlignment="Center"
+             VerticalAlignment="Center" />
+</Window>

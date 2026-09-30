@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DevNotes.Domain/DevNotes.Domain.csproj" />
+    <Project Path="src/DevNotes.Application/DevNotes.Application.csproj" />
+    <Project Path="src/DevNotes.Infrastructure/DevNotes.Infrastructure.csproj" />
+    <Project Path="src/DevNotes.Desktop/DevNotes.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DevNotes.Domain.Tests/DevNotes.Domain.Tests.csproj" />
+    <Project Path="tests/DevNotes.Application.Tests/DevNotes.Application.Tests.csproj" />
+    <Project Path="tests/DevNotes.Infrastructure.Tests/DevNotes.Infrastructure.Tests.csproj" />
+    <Project Path="tests/DevNotes.Desktop.Tests/DevNotes.Desktop.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+  </Folder>
+</Solution>

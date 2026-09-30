@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pure domain: no package or project references allowed here. -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevNotes.Domain.Tests" />
+  </ItemGroup>
+
+</Project>
