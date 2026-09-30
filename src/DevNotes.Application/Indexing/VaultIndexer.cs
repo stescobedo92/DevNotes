@@ -28,6 +28,12 @@ public interface IVaultIndexer
 
 public sealed partial class VaultIndexer : IVaultIndexer
 {
+    /// <summary>
+    /// Bytes of note files read into memory per batch. Batches are also limited by number of notes,
+    /// but a vault of a few hundred multi-megabyte files must not be loaded all at once.
+    /// </summary>
+    internal const long MaxBatchBytes = 32 * 1024 * 1024;
+
     private readonly INoteFileStore _files;
     private readonly INoteIndex _index;
     private readonly IndexingOptions _options;
@@ -82,7 +88,7 @@ public sealed partial class VaultIndexer : IVaultIndexer
         var processed = 0;
         progress?.Report(new IndexProgress(0, candidates.Count));
 
-        foreach (var chunk in candidates.Chunk(_options.EffectiveBatchSize))
+        foreach (var chunk in Batch(candidates, _options.EffectiveBatchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var outcomes = await ReadChunkAsync(chunk, states, cancellationToken).ConfigureAwait(false);
@@ -138,6 +144,30 @@ public sealed partial class VaultIndexer : IVaultIndexer
             Elapsed: stopwatch.Elapsed);
         LogScanCompleted(summary.Scanned, summary.Indexed, summary.Unchanged, summary.Removed, summary.Failed, summary.Elapsed.TotalMilliseconds);
         return summary;
+    }
+
+    /// <summary>Splits the files into batches of at most <paramref name="maxCount"/> notes and <see cref="MaxBatchBytes"/>.</summary>
+    internal static IEnumerable<NoteFileInfo[]> Batch(IReadOnlyList<NoteFileInfo> files, int maxCount)
+    {
+        var batch = new List<NoteFileInfo>(Math.Min(maxCount, files.Count));
+        long bytes = 0;
+        foreach (var file in files)
+        {
+            if (batch.Count > 0 && (batch.Count == maxCount || bytes + file.Size > MaxBatchBytes))
+            {
+                yield return [.. batch];
+                batch.Clear();
+                bytes = 0;
+            }
+
+            batch.Add(file);
+            bytes += file.Size;
+        }
+
+        if (batch.Count > 0)
+        {
+            yield return [.. batch];
+        }
     }
 
     public async Task IndexFileAsync(NotePath path, CancellationToken cancellationToken)

@@ -49,18 +49,25 @@ public sealed class InMemorySettingsStore : ISettingsStore
 
     public Exception? FailOnSave { get; set; }
 
+    /// <summary>When set, every save waits for this task first (a slow disk).</summary>
+    public Task? HoldSaves { get; set; }
+
     public Task<AppSettings> LoadAsync(CancellationToken cancellationToken) => Task.FromResult(Stored);
 
-    public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken)
+    public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         if (FailOnSave is { } failure)
         {
             throw failure;
         }
 
+        if (HoldSaves is { } hold)
+        {
+            await hold.WaitAsync(cancellationToken);
+        }
+
         Stored = settings;
         SaveCount++;
-        return Task.CompletedTask;
     }
 }
 

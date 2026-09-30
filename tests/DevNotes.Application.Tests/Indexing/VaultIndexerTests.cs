@@ -1,3 +1,4 @@
+using DevNotes.Application.Abstractions;
 using DevNotes.Application.Indexing;
 using DevNotes.Application.Tests.Fakes;
 using DevNotes.Domain.Notes;
@@ -256,6 +257,27 @@ public sealed class VaultIndexerTests
         await _indexer.RemoveAsync([], Ct);
 
         _index.FailNextMutation.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Batch_IsLimitedByNumberOfNotesAndByBytes()
+    {
+        const long megabyte = 1024 * 1024;
+        NoteFileInfo File(string name, long megabytes) => new(NotePath.Create(name), megabytes * megabyte, DateTimeOffset.UnixEpoch);
+        NoteFileInfo[] files =
+        [
+            File("a.md", 1), File("b.md", 1), File("c.md", 1), // limited by count (2)
+            File("d.md", 20), File("e.md", 20),                // 40 MB together: more than one batch may hold
+            File("f.md", 100),                                 // larger than the byte limit on its own: a batch of one
+            File("g.md", 1),
+        ];
+
+        var batches = VaultIndexer.Batch(files, maxCount: 2).Select(batch => batch.Select(file => file.Path.Value).ToArray()).ToList();
+
+        batches.Should().BeEquivalentTo(
+            new[] { new[] { "a.md", "b.md" }, ["c.md", "d.md"], ["e.md"], ["f.md"], ["g.md"] },
+            options => options.WithStrictOrdering());
+        VaultIndexer.Batch([], maxCount: 5).Should().BeEmpty();
     }
 
     [Fact]

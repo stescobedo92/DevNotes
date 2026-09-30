@@ -40,6 +40,9 @@ public interface IVaultSession : IAsyncDisposable
 
 public sealed partial class VaultSession : IVaultSession
 {
+    /// <summary>Times a changed file is looked at before giving up until the next scan.</summary>
+    internal const int MaxChangeAttempts = 3;
+
     private readonly INoteIndex _index;
     private readonly IVaultWatcher _watcher;
     private readonly VaultIndexer _indexer;
@@ -52,6 +55,9 @@ public sealed partial class VaultSession : IVaultSession
 
     private readonly Lock _bufferGate = new();
     private readonly HashSet<NotePath> _bufferedChanges = [];
+
+    // Only the worker touches it.
+    private readonly Dictionary<NotePath, int> _failedAttempts = [];
     private bool _rescanBuffered;
     private int _scanQueued;
     private Task? _worker;
@@ -78,7 +84,7 @@ public sealed partial class VaultSession : IVaultSession
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = loggerFactory.CreateLogger<VaultSession>();
 
-        Events = new VaultEventHub();
+        Events = new VaultEventHub(LogSubscriberFailed);
         _indexer = new VaultIndexer(files, index, options, loggerFactory.CreateLogger<VaultIndexer>());
         Notes = new NoteService(files, _indexer, Events, idGenerator, timeProvider, loggerFactory.CreateLogger<NoteService>());
         Queries = new NoteQueryService(index);
@@ -324,13 +330,45 @@ public sealed partial class VaultSession : IVaultSession
                 // Events only say "look at this path": what happens is decided by the current state of the
                 // file (indexed if it exists, removed if it does not). A stale "deleted" event therefore
                 // can never evict a note that was restored or rewritten in the meantime.
+                List<NotePath>? retry = null;
                 foreach (var path in job.ChangedPaths)
                 {
-                    await _indexer.IndexFileAsync(path, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await _indexer.IndexFileAsync(path, cancellationToken).ConfigureAwait(false);
+                        _failedAttempts.Remove(path);
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                    {
+                        // Usually the program that is saving the note still holds it open. One unreadable file
+                        // must not hide the other changes of the batch; it is looked at again after the next
+                        // quiet period, a few times at most (the next scan picks up whatever is left).
+                        var attempts = _failedAttempts.GetValueOrDefault(path) + 1;
+                        LogChangeNotIndexed(exception, path.Value, attempts);
+                        if (attempts < MaxChangeAttempts)
+                        {
+                            _failedAttempts[path] = attempts;
+                            (retry ??= []).Add(path);
+                        }
+                        else
+                        {
+                            _failedAttempts.Remove(path);
+                        }
+                    }
                 }
 
                 Events.PublishStatus(IndexStatus.Idle);
                 Events.PublishNotesChanged(NotesChangeSource.External, job.ChangedPaths);
+                if (retry is not null)
+                {
+                    lock (_bufferGate)
+                    {
+                        _bufferedChanges.UnionWith(retry);
+                    }
+
+                    _debouncer.Signal();
+                }
+
                 break;
 
             default:
@@ -369,4 +407,10 @@ public sealed partial class VaultSession : IVaultSession
 
     [LoggerMessage(EventId = 302, Level = LogLevel.Error, Message = "Buffered vault changes could not be queued")]
     private partial void LogDebouncerFailed(Exception exception);
+
+    [LoggerMessage(EventId = 303, Level = LogLevel.Warning, Message = "The changed note '{Path}' could not be read (attempt {Attempt})")]
+    private partial void LogChangeNotIndexed(Exception exception, string path, int attempt);
+
+    [LoggerMessage(EventId = 304, Level = LogLevel.Error, Message = "A subscriber of the vault events failed")]
+    private partial void LogSubscriberFailed(Exception exception);
 }

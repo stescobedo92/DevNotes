@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace DevNotes.Application.Search;
 
 /// <summary>
@@ -43,19 +45,41 @@ public static class SnippetParser
     /// <summary>Single-line version of a body fragment for list rows.</summary>
     public static string ToSingleLine(string? text, int maxLength)
     {
-        if (string.IsNullOrEmpty(text))
+        if (string.IsNullOrEmpty(text) || maxLength <= 0)
         {
             return string.Empty;
         }
 
-        return string.Create(Math.Min(text.Length, maxLength), text, static (destination, source) =>
+        // Line breaks, tabs and runs of spaces collapse into single spaces; nothing leads or trails.
+        var builder = new StringBuilder(Math.Min(text.Length, maxLength));
+        var pendingSpace = false;
+        foreach (var c in text)
         {
-            for (var i = 0; i < destination.Length; i++)
+            if (char.IsWhiteSpace(c) || char.IsControl(c) || c is MatchStart or MatchEnd)
             {
-                var c = source[i];
-                destination[i] = char.IsControl(c) || c is MatchStart or MatchEnd ? ' ' : c;
+                pendingSpace = builder.Length > 0;
+                continue;
             }
-        });
+
+            if (pendingSpace)
+            {
+                if (builder.Length + 1 >= maxLength)
+                {
+                    break;
+                }
+
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+
+            builder.Append(c);
+            if (builder.Length >= maxLength)
+            {
+                break;
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static void Append(List<SnippetSegment> segments, ReadOnlySpan<char> text, bool isMatch)

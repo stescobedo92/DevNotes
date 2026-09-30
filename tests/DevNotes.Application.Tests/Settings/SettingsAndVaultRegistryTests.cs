@@ -7,7 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace DevNotes.Application.Tests.Settings;
 
-public sealed class SettingsAndVaultRegistryTests : IDisposable
+public sealed class SettingsAndVaultRegistryTests : IAsyncDisposable
 {
     private readonly InMemorySettingsStore _store = new();
     private readonly SettingsService _settings;
@@ -23,9 +23,9 @@ public sealed class SettingsAndVaultRegistryTests : IDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _settings.Dispose();
+        await _settings.DisposeAsync();
         Directory.Delete(_tempRoot, recursive: true);
     }
 
@@ -153,6 +153,30 @@ public sealed class SettingsAndVaultRegistryTests : IDisposable
 
         _settings.Current.FontSize.Should().BeApproximately(AppSettings.DefaultFontSize + 5, 0.0001);
         _store.SaveCount.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_LetsUpdatesInFlightReachTheStore_AndRejectsLaterOnes()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _store.HoldSaves = release.Task;
+        var first = _settings.UpdateAsync(current => current with { Theme = AppTheme.Light }, Ct);
+        var second = _settings.UpdateAsync(current => current with { FontSize = 18 }, Ct);
+
+        var disposal = _settings.DisposeAsync().AsTask();
+        disposal.IsCompleted.Should().BeFalse("two updates have not been written yet");
+        release.SetResult();
+        await disposal;
+
+        (await first).Theme.Should().Be(AppTheme.Light);
+        (await second).FontSize.Should().Be(18);
+        _store.Stored.Should().BeEquivalentTo(new AppSettings { Theme = AppTheme.Light, FontSize = 18 });
+
+        var late = () => _settings.UpdateAsync(current => current with { FontSize = 20 }, Ct);
+        await late.Should().ThrowAsync<ObjectDisposedException>();
+        var reload = () => _settings.LoadAsync(Ct);
+        await reload.Should().ThrowAsync<ObjectDisposedException>();
+        _store.SaveCount.Should().Be(2);
     }
 
     [Fact]

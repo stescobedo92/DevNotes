@@ -129,9 +129,11 @@ public sealed class FtsQueryBuilderTests
     [Fact]
     public void SnippetParser_ToSingleLine_TruncatesAndCleans()
     {
-        SnippetParser.ToSingleLine("a\r\nb\tc" + SnippetParser.MatchStart, 100).Should().Be("a  b c ");
+        SnippetParser.ToSingleLine("\n# Title\r\n\r\nb\t c  " + SnippetParser.MatchStart, 100).Should().Be("# Title b c");
         SnippetParser.ToSingleLine("abcdef", 3).Should().Be("abc");
+        SnippetParser.ToSingleLine("ab cdef", 3).Should().Be("ab", "a result never ends with a separator");
         SnippetParser.ToSingleLine(null, 3).Should().BeEmpty();
+        SnippetParser.ToSingleLine("abc", 0).Should().BeEmpty();
     }
 
     /// <summary>A sanitized expression must be a sequence of "quoted strings", each optionally followed by '*'.</summary>

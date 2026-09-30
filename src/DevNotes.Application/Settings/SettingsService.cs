@@ -1,10 +1,12 @@
 namespace DevNotes.Application.Settings;
 
-public sealed class SettingsService(ISettingsStore store) : ISettingsService, IDisposable
+public sealed class SettingsService(ISettingsStore store) : ISettingsService, IAsyncDisposable
 {
     private readonly ISettingsStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AppSettings _current = new();
+    private int _pending;
+    private int _disposed;
 
     public event EventHandler<AppSettings>? Changed;
 
@@ -12,7 +14,7 @@ public sealed class SettingsService(ISettingsStore store) : ISettingsService, ID
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await EnterAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var loaded = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -20,7 +22,7 @@ public sealed class SettingsService(ISettingsStore store) : ISettingsService, ID
         }
         finally
         {
-            _gate.Release();
+            Exit();
         }
 
         Changed?.Invoke(this, Current);
@@ -31,7 +33,7 @@ public sealed class SettingsService(ISettingsStore store) : ISettingsService, ID
         ArgumentNullException.ThrowIfNull(update);
 
         AppSettings updated;
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await EnterAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var current = Current;
@@ -47,12 +49,57 @@ public sealed class SettingsService(ISettingsStore store) : ISettingsService, ID
         }
         finally
         {
-            _gate.Release();
+            Exit();
         }
 
         Changed?.Invoke(this, updated);
         return updated;
     }
 
-    public void Dispose() => _gate.Dispose();
+    /// <summary>
+    /// Waits for the operations that are queued or being written (the UI starts some updates without
+    /// awaiting them) so closing the app never cuts a save short, then rejects any later call.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        while (true)
+        {
+            await _gate.WaitAsync().ConfigureAwait(false);
+            if (Volatile.Read(ref _pending) == 0)
+            {
+                _gate.Dispose();
+                return;
+            }
+
+            // The semaphore does not promise arrival order: let the operations still queued go first.
+            _gate.Release();
+            await Task.Yield();
+        }
+    }
+
+    private async Task EnterAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        Interlocked.Increment(ref _pending);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            Interlocked.Decrement(ref _pending);
+            throw;
+        }
+    }
+
+    private void Exit()
+    {
+        Interlocked.Decrement(ref _pending);
+        _gate.Release();
+    }
 }

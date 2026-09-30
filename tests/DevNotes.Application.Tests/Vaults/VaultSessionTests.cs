@@ -126,6 +126,69 @@ public sealed class VaultSessionTests : IAsyncDisposable
         _index.Notes.Should().ContainSingle().Which.Should().Match<IndexedNote>(note => note.Path.Value == "renamed.md" && note.Id.Value == "A");
     }
 
+    [Fact]
+    public async Task ExternalChanges_OneUnreadableFile_DoesNotHideTheOthers_AndIsRetried()
+    {
+        _files.SetExternal("a.md", NoteText.Simple("A", "Alpha"));
+        _files.SetExternal("b.md", NoteText.Simple("B", "Beta"));
+        await StartAndSettleAsync();
+
+        // Both notes change; a.md is still held open by the program that is writing it.
+        _files.SetExternal("a.md", NoteText.Simple("A", "Alpha v2"));
+        _files.SetExternal("b.md", NoteText.Simple("B", "Beta v2"));
+        _files.MakeUnreadable("a.md");
+        _watcher.Raise(VaultFileEventKind.Changed, "a.md");
+        _watcher.Raise(VaultFileEventKind.Changed, "b.md");
+        await _session.WhenIdleAsync(Ct);
+
+        _index.Find("b.md")!.Metadata.Title.Should().Be("Beta v2", "the readable change of the batch is indexed");
+        _index.Find("a.md")!.Metadata.Title.Should().Be("Alpha");
+        Changes().Should().ContainSingle().Which.Paths.Select(path => path.Value).Should().BeEquivalentTo("a.md", "b.md");
+        Statuses().Last().Should().Be(IndexStatus.Idle, "a busy file is not an index failure");
+
+        _files.MakeReadable("a.md");
+        await _session.WhenIdleAsync(Ct);
+
+        _index.Find("a.md")!.Metadata.Title.Should().Be("Alpha v2", "the file is looked at again once the writer lets go");
+    }
+
+    [Fact]
+    public async Task ExternalChange_OfAFileThatStaysUnreadable_IsRetriedAFewTimesOnly()
+    {
+        _files.SetExternal("a.md", NoteText.Simple("A", "Alpha"));
+        await StartAndSettleAsync();
+        _files.MakeUnreadable("a.md");
+        var readsBefore = _files.ReadCount;
+
+        _watcher.Raise(VaultFileEventKind.Changed, "a.md");
+        for (var i = 0; i < VaultSession.MaxChangeAttempts + 3; i++)
+        {
+            await _session.WhenIdleAsync(Ct);
+        }
+
+        (_files.ReadCount - readsBefore).Should().Be(VaultSession.MaxChangeAttempts, "the next scan takes over; retrying forever would spin");
+        _index.Find("a.md")!.Metadata.Title.Should().Be("Alpha");
+    }
+
+    [Fact]
+    public async Task FailingSubscriber_DoesNotStopTheWorkerNorTheOtherSubscribers()
+    {
+        _session.Events.NotesChanged += (_, _) => throw new InvalidOperationException("subscriber bug");
+        var laterSubscriberCalls = 0;
+        _session.Events.NotesChanged += (_, _) => Interlocked.Increment(ref laterSubscriberCalls);
+        _files.SetExternal("a.md", NoteText.Simple("A", "Alpha"));
+
+        await _session.StartAsync(Ct);
+        await _session.WhenIdleAsync(Ct);
+        _files.SetExternal("b.md", NoteText.Simple("B", "Beta"));
+        _watcher.Raise(VaultFileEventKind.Created, "b.md");
+        await _session.WhenIdleAsync(Ct);
+
+        _index.Notes.Should().HaveCount(2, "the indexing worker survived the failing subscriber");
+        laterSubscriberCalls.Should().Be(2);
+        Statuses().Last().Should().Be(IndexStatus.Idle);
+    }
+
     [Theory]
     [InlineData(".git/index.md")]
     [InlineData("notes/.hidden/x.md")]
