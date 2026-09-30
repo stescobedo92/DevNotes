@@ -11,6 +11,9 @@
     <Project Path="tests/DevNotes.Infrastructure.Tests/DevNotes.Infrastructure.Tests.csproj" />
     <Project Path="tests/DevNotes.Desktop.Tests/DevNotes.Desktop.Tests.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/DevNotes.Benchmarks/DevNotes.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path="Directory.Build.props" />
