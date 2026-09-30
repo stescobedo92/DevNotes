@@ -20,22 +20,52 @@ public abstract partial class DialogViewModel : ObservableObject
 
     public string Title { get; }
 
+    /// <summary>Dialogs with an editor or several sections get the wide card.</summary>
+    public virtual bool IsWide => false;
+
     /// <summary>Completes when the dialog has been confirmed or cancelled.</summary>
     public Task Closed => _closed.Task;
 
+    /// <summary>Raised synchronously, before <see cref="Closed"/> completes, so the host can update its state at once.</summary>
+    internal event Action<DialogViewModel>? Dismissed;
+
     /// <summary>Dismisses the dialog without applying anything (Escape, Cancel, click outside).</summary>
+    public void Cancel() => _ = CancelAsync();
+
+    /// <summary>
+    /// Dismisses the dialog unless it has something to lose and the user decides to stay
+    /// (<see cref="ConfirmCancelAsync"/>). Returns true when the dialog closed.
+    /// </summary>
     [RelayCommand]
-    public void Cancel()
+    public async Task<bool> CancelAsync()
     {
+        if (!await ConfirmCancelAsync())
+        {
+            return false;
+        }
+
         OnCancelled();
         Close();
+        return true;
     }
+
+    /// <summary>Dialogs with unsaved work override this to ask before being dismissed.</summary>
+    protected virtual Task<bool> ConfirmCancelAsync() => Task.FromResult(true);
 
     protected virtual void OnCancelled()
     {
     }
 
-    protected void Close() => _closed.TrySetResult();
+    protected void Close()
+    {
+        if (_closed.Task.IsCompleted)
+        {
+            return;
+        }
+
+        Dismissed?.Invoke(this);
+        _closed.TrySetResult();
+    }
 }
 
 public sealed partial class ConfirmDialogViewModel : DialogViewModel

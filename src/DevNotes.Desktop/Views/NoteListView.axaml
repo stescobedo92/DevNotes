@@ -13,7 +13,9 @@
         <TextBox x:Name="SearchBox"
                  Text="{Binding SearchText}"
                  PlaceholderText="{x:Static res:Strings.Search_Placeholder}"
+                 ToolTip.Tip="{x:Static res:Strings.Search_SyntaxTip}"
                  AutomationProperties.Name="{x:Static res:Strings.A11y_SearchBox}"
+                 AutomationProperties.HelpText="{x:Static res:Strings.Search_SyntaxTip}"
                  KeyDown="OnSearchBoxKeyDown" />
         <ComboBox Grid.Column="1"
                   Margin="{DynamicResource GapListIndent}"
@@ -131,7 +133,15 @@
                   MaxWidth="{DynamicResource EmptyStateWidth}"
                   Margin="{DynamicResource Inset4}">
         <TextBlock Classes="title" TextAlignment="Center" TextWrapping="Wrap" Text="{x:Static res:Strings.Empty_NoResults_Title}" />
-        <TextBlock Classes="secondary" TextAlignment="Center" TextWrapping="Wrap" Margin="{DynamicResource GapAbove2}" Text="{x:Static res:Strings.Empty_NoResults_Hint}" />
+        <TextBlock Classes="secondary" TextAlignment="Center" TextWrapping="Wrap" Margin="{DynamicResource GapAbove2}" IsVisible="{Binding !HasFilter}" Text="{x:Static res:Strings.Empty_NoResults_Hint}" />
+        <TextBlock Classes="secondary" TextAlignment="Center" TextWrapping="Wrap" Margin="{DynamicResource GapAbove2}" IsVisible="{Binding HasFilter}" Text="{x:Static res:Strings.Empty_NoResults_FilterHint}" />
+        <Button x:Name="ClearFilterButton"
+                Classes="link"
+                HorizontalAlignment="Center"
+                Margin="{DynamicResource GapAbove2}"
+                IsVisible="{Binding HasFilter}"
+                Command="{Binding ClearFilterCommand}"
+                Content="{x:Static res:Strings.Sidebar_ClearFilters}" />
       </StackPanel>
     </Panel>
 

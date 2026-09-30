@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DevNotes.Desktop.ViewModels.Dialogs;
@@ -58,20 +59,40 @@ public sealed partial class DialogHostView : UserControl
         var target = dialog switch
         {
             PromptDialogViewModel => FindDescendant<TextBox>("PromptInput"),
+            NewNoteDialogViewModel => FindDescendant<TextBox>("NewNoteTitle"),
+            TemplatesDialogViewModel => FindDescendant<ListBox>("TemplateList"),
             ConfirmDialogViewModel { IsDestructive: true } => FindDescendant<Button>("CancelButton"),
             ConfirmDialogViewModel => FindDescendant<Button>("ConfirmButton"),
             _ => FindDescendant<Button>("CloseButton"),
         };
 
-        if (target is TextBox textBox)
+        var focused = target switch
         {
-            textBox.Focus();
-            textBox.SelectAll();
-        }
-        else
+            TextBox textBox => FocusText(textBox),
+            ListBox list => FocusSelectedItem(list),
+            null => false,
+            _ => target.Focus(),
+        };
+
+        // Focus must end up inside the card: Escape and the other keys of the dialog are handled there.
+        if (!focused)
         {
-            (target ?? Card).Focus();
+            Card.Focus();
         }
+    }
+
+    private static bool FocusText(TextBox textBox)
+    {
+        var focused = textBox.Focus();
+        textBox.SelectAll();
+        return focused;
+    }
+
+    /// <summary>A list box is not focusable itself; its selected (or first) item is.</summary>
+    private static bool FocusSelectedItem(ListBox list)
+    {
+        var index = list.SelectedIndex >= 0 ? list.SelectedIndex : 0;
+        return list.ContainerFromIndex(index) is Control item && item.Focus();
     }
 
     private Control? FindDescendant<T>(string name)
@@ -90,10 +111,34 @@ public sealed partial class DialogHostView : UserControl
             _viewModel.CancelCurrent();
             e.Handled = true;
         }
-        else if (e.Key == Key.Enter && dialog is PromptDialogViewModel prompt && e.Source is TextBox)
+        else if (e.Key == Key.Enter && e.Source is TextBox { AcceptsReturn: false } source)
         {
-            prompt.ConfirmCommand.Execute(null);
-            e.Handled = true;
+            // Enter in a single-line field confirms the dialog (or applies the field, for the shortcut).
+            switch (dialog)
+            {
+                case PromptDialogViewModel prompt:
+                    prompt.ConfirmCommand.Execute(null);
+                    e.Handled = true;
+                    break;
+                case NewNoteDialogViewModel newNote:
+                    newNote.ConfirmCommand.Execute(null);
+                    e.Handled = true;
+                    break;
+                case SettingsDialogViewModel settings when source.Name == "HotkeyBox":
+                    settings.ApplyHotkeyCommand.Execute(null);
+                    e.Handled = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private void OnHotkeyLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.Current is SettingsDialogViewModel settings)
+        {
+            settings.ApplyHotkeyCommand.Execute(null);
         }
     }
 }

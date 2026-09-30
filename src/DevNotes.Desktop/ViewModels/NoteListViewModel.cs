@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using DevNotes.Application.Search;
 using DevNotes.Application.Vaults;
 using DevNotes.Desktop.Resources;
@@ -121,6 +122,9 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
 
     /// <summary>Asks the shell to open a note. Returns false when the note could not be opened (e.g. unsaved changes).</summary>
     public Func<NotePath, Task<bool>>? OpenRequested { get; set; }
+
+    /// <summary>Asks the shell to drop the sidebar selection (the "clear filters" link of the empty state).</summary>
+    public Action? ClearFilterRequested { get; set; }
 
     public IReadOnlyList<NoteSortOption> SortOptions { get; }
 
@@ -305,6 +309,9 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
         _queryCancellation?.Dispose();
         _queryCancellation = null;
     }
+
+    [RelayCommand]
+    private void ClearFilter() => ClearFilterRequested?.Invoke();
 
     partial void OnSearchTextChanged(string value) => _ = RefreshAsync();
 

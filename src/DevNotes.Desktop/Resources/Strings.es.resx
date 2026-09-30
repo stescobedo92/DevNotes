@@ -189,4 +189,102 @@
   <data name="Type_runbook" xml:space="preserve"><value>Runbook</value></data>
   <data name="Type_learning" xml:space="preserve"><value>Aprendizaje</value></data>
   <data name="Type_snippet" xml:space="preserve"><value>Snippet</value></data>
+  <!-- Phase 2: filters, templates, quick capture, settings -->
+  <data name="Sidebar_Projects" xml:space="preserve"><value>Proyectos</value></data>
+  <data name="Sidebar_Tags" xml:space="preserve"><value>Etiquetas</value></data>
+  <data name="Sidebar_Types" xml:space="preserve"><value>Tipos</value></data>
+  <data name="Sidebar_ClearFilters" xml:space="preserve"><value>Limpiar filtros</value></data>
+  <data name="Sidebar_NoProjects" xml:space="preserve"><value>Todavía no hay proyectos</value></data>
+  <data name="Sidebar_NoTags" xml:space="preserve"><value>Todavía no hay etiquetas</value></data>
+  <data name="Sidebar_Templates" xml:space="preserve"><value>Plantillas…</value></data>
+  <data name="Sidebar_Settings" xml:space="preserve"><value>Ajustes…</value></data>
+  <data name="Sidebar_QuickCapture" xml:space="preserve"><value>Captura rápida</value></data>
+  <data name="Filter_ActiveCount" xml:space="preserve"><value>{0} activos</value></data>
+  <data name="Empty_NoResults_FilterHint" xml:space="preserve"><value>Ninguna nota coincide con los filtros activos.</value></data>
+  <data name="Search_SyntaxTip" xml:space="preserve"><value>Sintaxis: "frase exacta", -excluir, #etiqueta, project:nombre, tag:nombre, type:bug, commit:hash, ticket:ID, created:&gt;2026-09-01 (también 2026-09, 2026 y rangos a..b), updated:…</value></data>
+  <data name="A11y_FilterPanel" xml:space="preserve"><value>Filtros</value></data>
+  <data name="A11y_ProjectFilters" xml:space="preserve"><value>Filtros por proyecto</value></data>
+  <data name="A11y_TagFilters" xml:space="preserve"><value>Filtros por etiqueta</value></data>
+  <data name="A11y_TypeFilters" xml:space="preserve"><value>Filtros por tipo</value></data>
+  <data name="Dialog_NewNote_Template" xml:space="preserve"><value>Plantilla</value></data>
+  <data name="Dialog_NewNote_Project" xml:space="preserve"><value>Proyecto (opcional)</value></data>
+  <data name="Template_note" xml:space="preserve"><value>Nota</value></data>
+  <data name="Template_bug" xml:space="preserve"><value>Bug resuelto</value></data>
+  <data name="Template_adr" xml:space="preserve"><value>Decisión de diseño (ADR)</value></data>
+  <data name="Template_runbook" xml:space="preserve"><value>Runbook</value></data>
+  <data name="Template_learning" xml:space="preserve"><value>Aprendizaje</value></data>
+  <data name="Template_snippet" xml:space="preserve"><value>Snippet</value></data>
+  <data name="Dialog_Templates_Title" xml:space="preserve"><value>Plantillas</value></data>
+  <data name="Dialog_Templates_Hint" xml:space="preserve"><value>Marcadores: {{id}}, {{title}}, {{project}}, {{date}}, {{type}} y {{body}}. Las plantillas se guardan en la carpeta .devnotes/templates de la bóveda, así que se pueden versionar con las notas.</value></data>
+  <data name="Dialog_Templates_BuiltIn" xml:space="preserve"><value>Integrada</value></data>
+  <data name="Dialog_Templates_Customized" xml:space="preserve"><value>Personalizada</value></data>
+  <data name="Dialog_Templates_Custom" xml:space="preserve"><value>Propia</value></data>
+  <data name="Dialog_Templates_New" xml:space="preserve"><value>Nueva plantilla…</value></data>
+  <data name="Dialog_Templates_NewLabel" xml:space="preserve"><value>Nombre de la plantilla</value></data>
+  <data name="Dialog_Templates_Reset" xml:space="preserve"><value>Restaurar la integrada</value></data>
+  <data name="Dialog_Templates_ResetConfirm" xml:space="preserve"><value>¿Descartar tus cambios en la plantilla "{0}" y restaurar la integrada?</value></data>
+  <data name="Dialog_Templates_DeleteConfirm" xml:space="preserve"><value>¿Eliminar la plantilla "{0}"?</value></data>
+  <data name="Dialog_Templates_DiscardConfirm" xml:space="preserve"><value>¿Descartar los cambios sin guardar de "{0}"?</value></data>
+  <data name="Error_TemplateName" xml:space="preserve"><value>Escribe un nombre con al menos una letra o cifra (hasta 40 caracteres).</value></data>
+  <data name="Error_TemplateExists" xml:space="preserve"><value>Ya existe una plantilla con ese nombre.</value></data>
+  <data name="Notify_TemplateSaved" xml:space="preserve"><value>Plantilla guardada</value></data>
+  <data name="Command_Templates" xml:space="preserve"><value>Editar plantillas…</value></data>
+  <data name="Capture_Title" xml:space="preserve"><value>Captura rápida</value></data>
+  <data name="Capture_TitlePlaceholder" xml:space="preserve"><value>Título (opcional: se usa la primera línea del texto)</value></data>
+  <data name="Capture_TextPlaceholder" xml:space="preserve"><value>¿Qué quieres recordar?</value></data>
+  <data name="Capture_ProjectPlaceholder" xml:space="preserve"><value>Proyecto</value></data>
+  <data name="Capture_Save" xml:space="preserve"><value>Guardar</value></data>
+  <data name="Capture_Hint" xml:space="preserve"><value>Ctrl+Enter guarda y cierra · Esc oculta y conserva el borrador</value></data>
+  <data name="Capture_NoVault" xml:space="preserve"><value>Abre una bóveda en DevNotes para capturar notas.</value></data>
+  <data name="Capture_Empty" xml:space="preserve"><value>Escribe un título o algo de texto.</value></data>
+  <data name="Capture_DefaultTitle" xml:space="preserve"><value>Captura {0}</value></data>
+  <data name="Notify_Captured" xml:space="preserve"><value>Capturada: {0}</value></data>
+  <data name="Command_QuickCapture" xml:space="preserve"><value>Captura rápida</value></data>
+  <data name="A11y_CaptureTitle" xml:space="preserve"><value>Título de la nota capturada</value></data>
+  <data name="A11y_CaptureText" xml:space="preserve"><value>Texto de la nota capturada</value></data>
+  <data name="A11y_CaptureProject" xml:space="preserve"><value>Proyecto de la nota capturada</value></data>
+  <data name="Dialog_Settings_Title" xml:space="preserve"><value>Ajustes</value></data>
+  <data name="Settings_Appearance" xml:space="preserve"><value>Apariencia</value></data>
+  <data name="Settings_Theme" xml:space="preserve"><value>Tema</value></data>
+  <data name="Settings_ThemeDark" xml:space="preserve"><value>Oscuro</value></data>
+  <data name="Settings_ThemeLight" xml:space="preserve"><value>Claro</value></data>
+  <data name="Settings_ThemeSystem" xml:space="preserve"><value>Seguir al sistema</value></data>
+  <data name="Settings_Language" xml:space="preserve"><value>Idioma</value></data>
+  <data name="Settings_LanguageSystem" xml:space="preserve"><value>Idioma del sistema</value></data>
+  <data name="Settings_LanguageEnglish" xml:space="preserve"><value>Inglés</value></data>
+  <data name="Settings_LanguageSpanish" xml:space="preserve"><value>Español</value></data>
+  <data name="Settings_FontSize" xml:space="preserve"><value>Tamaño de letra</value></data>
+  <data name="Settings_Density" xml:space="preserve"><value>Densidad</value></data>
+  <data name="Settings_DensityComfortable" xml:space="preserve"><value>Cómoda</value></data>
+  <data name="Settings_DensityCompact" xml:space="preserve"><value>Compacta</value></data>
+  <data name="Settings_ReduceMotion" xml:space="preserve"><value>Reducir el movimiento</value></data>
+  <data name="Settings_RestartHint" xml:space="preserve"><value>El idioma se aplica la próxima vez que se abra la aplicación.</value></data>
+  <data name="Settings_QuickCapture" xml:space="preserve"><value>Captura rápida</value></data>
+  <data name="Settings_GlobalHotkeyEnabled" xml:space="preserve"><value>Abrir la captura rápida con un atajo en todo el sistema</value></data>
+  <data name="Settings_GlobalHotkey" xml:space="preserve"><value>Atajo</value></data>
+  <data name="Settings_HotkeyHint" xml:space="preserve"><value>Por ejemplo Ctrl+Alt+N: Ctrl, Alt o Win más una letra, una cifra o una tecla de función.</value></data>
+  <data name="Settings_HotkeyStatus_Active" xml:space="preserve"><value>Activo en este sistema.</value></data>
+  <data name="Settings_HotkeyStatus_Unavailable" xml:space="preserve"><value>No disponible aquí: {0}. Dentro de DevNotes el atajo sigue abriendo la captura.</value></data>
+  <data name="Settings_HotkeyStatus_Failed" xml:space="preserve"><value>No se pudo registrar: {0}</value></data>
+  <data name="Settings_HotkeyStatus_Disabled" xml:space="preserve"><value>Desactivado. Dentro de DevNotes el atajo sigue abriendo la captura.</value></data>
+  <data name="Settings_RequestAccessibility" xml:space="preserve"><value>Conceder acceso…</value></data>
+  <data name="Error_Hotkey" xml:space="preserve"><value>No es un atajo válido.</value></data>
+  <data name="Settings_Projects" xml:space="preserve"><value>Proyectos</value></data>
+  <data name="Settings_ProjectsHint" xml:space="preserve"><value>Con la carpeta del repositorio de un proyecto, DevNotes detecta el proyecto activo cuando se inicia desde esa carpeta (o con --project-dir) y lo ofrece como filtro y para las notas nuevas.</value></data>
+  <data name="Settings_RepositoryPath" xml:space="preserve"><value>Carpeta del repositorio</value></data>
+  <data name="Settings_Browse" xml:space="preserve"><value>Elegir…</value></data>
+  <data name="Settings_ClearPath" xml:space="preserve"><value>Quitar</value></data>
+  <data name="Settings_NoProjects" xml:space="preserve"><value>Los proyectos aparecen aquí en cuanto una nota tenga uno.</value></data>
+  <data name="Settings_Maintenance" xml:space="preserve"><value>Mantenimiento</value></data>
+  <data name="Command_Settings" xml:space="preserve"><value>Ajustes…</value></data>
+  <data name="Hotkey_Wayland" xml:space="preserve"><value>las sesiones Wayland no permiten atajos globales sin permisos adicionales</value></data>
+  <data name="Hotkey_NeedsAccessibility" xml:space="preserve"><value>macOS exige el permiso de Accesibilidad para DevNotes</value></data>
+  <data name="Hotkey_InUse" xml:space="preserve"><value>otra aplicación ya usa ese atajo</value></data>
+  <data name="Hotkey_NoWindow" xml:space="preserve"><value>la ventana principal no está disponible</value></data>
+  <data name="Hotkey_HookFailed" xml:space="preserve"><value>no se pudo iniciar el gancho de teclado ({0})</value></data>
+  <data name="Status_Branch" xml:space="preserve"><value>Rama Git {0}</value></data>
+  <data name="Status_ActiveProject" xml:space="preserve"><value>Proyecto: {0}</value></data>
+  <data name="Status_ActiveProject_Tip" xml:space="preserve"><value>Detectado a partir del repositorio {0}. Pulsa para filtrar la lista por este proyecto.</value></data>
+  <data name="Command_FilterActiveProject" xml:space="preserve"><value>Filtrar por el proyecto activo</value></data>
+  <data name="A11y_ActiveProject" xml:space="preserve"><value>Proyecto activo</value></data>
 </root>

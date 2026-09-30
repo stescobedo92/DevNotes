@@ -22,6 +22,20 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ApplyLayout(new LayoutSettings());
+        KeyDown += OnWindowKeyDown;
+    }
+
+    /// <summary>
+    /// Escape closes the open dialog even when the focus is outside its card (a control the dialog
+    /// could not focus, a click elsewhere): the keyboard must always have a way out of a modal.
+    /// </summary>
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && _viewModel is { Dialogs.IsOpen: true } viewModel)
+        {
+            viewModel.Dialogs.CancelCurrent();
+            e.Handled = true;
+        }
     }
 
     /// <summary>Applies persisted window and panel sizes.</summary>

@@ -62,17 +62,41 @@ public sealed partial class DialogHostViewModel : ObservableObject, IDialogServi
 
         _stack.Add(dialog);
         Current = dialog;
+        dialog.Dismissed += Remove;
         try
         {
             await dialog.Closed;
         }
         finally
         {
-            _stack.Remove(dialog);
+            dialog.Dismissed -= Remove;
+            Remove(dialog); // Already gone when it closed normally; covers a dialog that never raised Dismissed.
+        }
+    }
+
+    /// <summary>Takes the dialog off the stack the moment it closes, so callers see the next dialog (or none) at once.</summary>
+    private void Remove(DialogViewModel dialog)
+    {
+        if (_stack.Remove(dialog))
+        {
             Current = _stack.Count > 0 ? _stack[^1] : null;
         }
     }
 
-    /// <summary>Cancels the dialog on top (Escape).</summary>
+    /// <summary>Cancels the dialog on top (Escape); a dialog with unsaved work may ask first.</summary>
     public void CancelCurrent() => Current?.Cancel();
+
+    /// <summary>Dismisses every open dialog; returns false as soon as one of them decides to stay.</summary>
+    public async Task<bool> CancelAllAsync()
+    {
+        while (Current is { } dialog)
+        {
+            if (!await dialog.CancelAsync())
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

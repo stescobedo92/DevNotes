@@ -2,8 +2,10 @@ using System.ComponentModel;
 using System.Data.Common;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DevNotes.Application.Abstractions;
 using DevNotes.Application.Indexing;
 using DevNotes.Application.Notes;
+using DevNotes.Application.Projects;
 using DevNotes.Application.Settings;
 using DevNotes.Application.Vaults;
 using DevNotes.Desktop.Resources;
@@ -49,7 +51,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IThemeService _theme;
     private readonly IUiDispatcher _dispatcher;
     private readonly IFolderPicker _folderPicker;
+    private readonly IQuickCapturePresenter _quickCapture;
+    private readonly IGlobalHotkeyService _hotkey;
+    private readonly IGitRepositoryLocator _git;
+    private readonly LaunchContext _launch;
     private IVaultSession? _session;
+    private string? _lastTemplateKey;
 
     public MainWindowViewModel(
         IVaultRegistry registry,
@@ -58,11 +65,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IThemeService theme,
         IUiDispatcher dispatcher,
         IFolderPicker folderPicker,
+        IQuickCapturePresenter quickCapture,
+        IGlobalHotkeyService hotkey,
+        IGitRepositoryLocator git,
+        LaunchContext launch,
         DialogHostViewModel dialogs,
         NotificationViewModel notification,
         NoteListViewModel noteList,
         NoteEditorViewModel editor,
-        QuickOpenViewModel quickOpen)
+        QuickOpenViewModel quickOpen,
+        FilterPanelViewModel filters,
+        QuickCaptureViewModel capture)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
@@ -70,24 +83,35 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _theme = theme ?? throw new ArgumentNullException(nameof(theme));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _folderPicker = folderPicker ?? throw new ArgumentNullException(nameof(folderPicker));
+        _quickCapture = quickCapture ?? throw new ArgumentNullException(nameof(quickCapture));
+        _hotkey = hotkey ?? throw new ArgumentNullException(nameof(hotkey));
+        _git = git ?? throw new ArgumentNullException(nameof(git));
+        _launch = launch ?? throw new ArgumentNullException(nameof(launch));
         Dialogs = dialogs ?? throw new ArgumentNullException(nameof(dialogs));
         Notification = notification ?? throw new ArgumentNullException(nameof(notification));
         NoteList = noteList ?? throw new ArgumentNullException(nameof(noteList));
         Editor = editor ?? throw new ArgumentNullException(nameof(editor));
         QuickOpen = quickOpen ?? throw new ArgumentNullException(nameof(quickOpen));
+        Filters = filters ?? throw new ArgumentNullException(nameof(filters));
+        Capture = capture ?? throw new ArgumentNullException(nameof(capture));
 
         Vaults = [];
         VaultName = Strings.Status_NoVault;
         NoteCountText = string.Empty;
         IndexStatusText = string.Empty;
+        BranchText = string.Empty;
+        ActiveProjectText = string.Empty;
+        ActiveProjectTip = string.Empty;
         IsMotionEnabled = theme.IsMotionEnabled;
         Layout = new LayoutSettings();
 
         NoteList.OpenRequested = OpenNoteAsync;
+        NoteList.ClearFilterRequested = Filters.Clear;
         QuickOpen.OpenNoteRequested = OpenNoteAndFocusAsync;
         NoteList.PropertyChanged += OnNoteListPropertyChanged;
         Editor.PropertyChanged += OnEditorPropertyChanged;
         Editor.NoteChanged += OnEditorNoteChanged;
+        Filters.FilterChanged += (_, filter) => NoteList.Filter = filter;
         _theme.AppearanceChanged += (_, _) => IsMotionEnabled = _theme.IsMotionEnabled;
 
         Commands = CreateCommands();
@@ -104,6 +128,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public NoteEditorViewModel Editor { get; }
 
     public QuickOpenViewModel QuickOpen { get; }
+
+    public FilterPanelViewModel Filters { get; }
+
+    public QuickCaptureViewModel Capture { get; }
 
     /// <summary>Every action of the app, with its shortcut. The window registers the key bindings from this list.</summary>
     public IReadOnlyList<AppCommand> Commands { get; }
@@ -153,6 +181,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsIndexProgressIndeterminate { get; private set; }
 
+    /// <summary>Branch (or short commit) checked out in the vault folder, when it is a Git repository.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBranch), nameof(BranchTip))]
+    public partial string BranchText { get; private set; }
+
+    public string BranchTip => HasBranch ? ErrorMessages.Format(Strings.Status_Branch, BranchText) : string.Empty;
+
+    /// <summary>The project detected from the repository the app was started in, if any.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveProject))]
+    public partial ActiveProject? ActiveProject { get; private set; }
+
+    [ObservableProperty]
+    public partial string ActiveProjectText { get; private set; }
+
+    [ObservableProperty]
+    public partial string ActiveProjectTip { get; private set; }
+
+    public bool HasBranch => BranchText.Length > 0;
+
+    public bool HasActiveProject => ActiveProject is not null;
+
     /// <summary>A vault is open.</summary>
     public bool HasVault => ActiveVault is not null;
 
@@ -172,6 +222,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string NewNoteShortcut => ShortcutOf("note.new");
 
     public string SearchShortcut => ShortcutOf("search.open");
+
+    public string QuickCaptureShortcut => ShortcutOf("capture.quick");
 
     public string EmptyVaultHint => ErrorMessages.Format(Strings.Empty_NoNotes_Hint, NewNoteShortcut);
 
@@ -206,6 +258,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public async Task<bool> ShutdownAsync(WindowLayout? layout)
     {
+        // A dialog with unsaved work (a template being edited) gets to ask first.
+        if (!await Dialogs.CancelAllAsync())
+        {
+            return false;
+        }
+
+        // Whatever the capture window holds survives the restart.
+        Capture.PersistDraft();
+
         // The window stays on screen while settings are saved and the vault is released: nothing typed
         // after the last save may be accepted, because nobody would save it. Staying re-enables editing.
         using var editing = Editor.SuspendEditing();
@@ -252,6 +313,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private IReadOnlyList<AppCommand> CreateCommands() =>
     [
         new("note.new", Strings.Command_NewNote, NewNoteCommand, new ShortcutKey("N", Primary: true)),
+        new("capture.quick", Strings.Command_QuickCapture, QuickCaptureCommand, new ShortcutKey("N", Primary: true, Alt: true)),
         new("note.save", Strings.Command_Save, SaveCommand, new ShortcutKey("S", Primary: true)),
         new("search.open", Strings.Command_Search, SearchCommand, new ShortcutKey("K", Primary: true)),
         new("note.switch", Strings.Command_SwitchNote, SwitchNoteCommand, new ShortcutKey("P", Primary: true)),
@@ -267,6 +329,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         new("trash.open", Strings.Command_OpenTrash, OpenTrashCommand),
         new("vault.add", Strings.Command_AddVault, AddVaultCommand),
         new("index.rebuild", Strings.Command_Reindex, ReindexCommand),
+        new("templates.edit", Strings.Command_Templates, EditTemplatesCommand),
+        new("settings.open", Strings.Command_Settings, OpenSettingsCommand, new ShortcutKey("OemComma", Primary: true)),
+        new("project.filterActive", Strings.Command_FilterActiveProject, FilterActiveProjectCommand),
         new("theme.dark", Strings.Command_ThemeDark, SetThemeDarkCommand),
         new("theme.light", Strings.Command_ThemeLight, SetThemeLightCommand),
         new("theme.system", Strings.Command_ThemeSystem, SetThemeSystemCommand),
@@ -376,7 +441,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
             VaultName = vault.Name;
             ApplyIndexStatus(session.Events.Status);
             await NoteList.SetSessionAsync(session);
+            await Filters.SetSessionAsync(session);
             await UpdateNoteCountAsync();
+            UpdateGitContext();
         }
         catch (Exception exception) when (exception is DbException || ErrorMessages.IsExpected(exception))
         {
@@ -402,6 +469,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         DetachSession();
         QuickOpen.SetSession(null);
         await NoteList.SetSessionAsync(null);
+        await Filters.SetSessionAsync(null);
         await _sessions.CloseAsync();
 
         VaultName = Strings.Status_NoVault;
@@ -409,9 +477,36 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IndexStatusText = string.Empty;
         IsIndexing = false;
         HasIndexError = false;
+        BranchText = string.Empty;
+        SetActiveProject(null);
         RefreshVaults();
         NotifyCommandStates();
         return true;
+    }
+
+    /// <summary>
+    /// The branch of the vault and the active project. Both come from tiny files under .git and
+    /// from the facets, so they are recomputed whenever the notes or the settings change.
+    /// </summary>
+    private void UpdateGitContext()
+    {
+        if (_session is not { } session)
+        {
+            return;
+        }
+
+        BranchText = _git.Find(session.Vault.RootPath)?.Display ?? string.Empty;
+        var repository = _launch.ProjectDirectory is { } directory ? _git.Find(directory) : null;
+        SetActiveProject(ActiveProjectDetector.Detect(repository, _settings.Current.Projects, Filters.ProjectNames));
+    }
+
+    private void SetActiveProject(ActiveProject? project)
+    {
+        ActiveProject = project;
+        ActiveProjectText = project is null ? string.Empty : ErrorMessages.Format(Strings.Status_ActiveProject, project.Name);
+        ActiveProjectTip = project is null ? string.Empty : ErrorMessages.Format(Strings.Status_ActiveProject_Tip, project.Repository.RootPath);
+        Capture.DefaultProject = project?.Name;
+        FilterActiveProjectCommand.NotifyCanExecuteChanged();
     }
 
     private void DetachSession()
@@ -442,24 +537,72 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var title = await Dialogs.PromptAsync(
-            Strings.Dialog_NewNote_Title,
-            Strings.Dialog_NewNote_Label,
-            string.Empty,
-            Strings.Action_Create,
-            ValidateTitle);
-        if (title is null)
+        var templates = await session.Templates.ListAsync(CancellationToken.None);
+        var dialog = new NewNoteDialogViewModel([.. templates.Select(TemplateOption.From)], SuggestedProject(), _lastTemplateKey);
+        await Dialogs.ShowAsync(dialog);
+        if (dialog.Result is not { } choice)
         {
             return;
         }
 
+        _lastTemplateKey = choice.Template.Key;
+
         // New notes are created next to the note that is open, which is where the user is working.
-        var created = await session.Notes.CreateAsync(new NewNoteRequest(title, Editor.Path?.Directory), CancellationToken.None);
+        var request = new NewNoteRequest(choice.Title, Editor.Path?.Directory, choice.Template.Type, choice.Project, choice.Template.Text);
+        var created = await session.Notes.CreateAsync(request, CancellationToken.None);
         if (await Editor.OpenAsync(created.Path))
         {
             Editor.RequestFocus();
         }
     });
+
+    /// <summary>The project a new note most likely belongs to: the active one, else the only project selected in the sidebar.</summary>
+    private string? SuggestedProject() =>
+        ActiveProject?.Name ?? (Filters.Filter.Projects.Count == 1 ? Filters.Filter.Projects[0] : null);
+
+    [RelayCommand]
+    private void QuickCapture() => _quickCapture.Show();
+
+    [RelayCommand(CanExecute = nameof(HasVault))]
+    private Task EditTemplatesAsync() => RunAsync(async () =>
+    {
+        if (_session is not { } session)
+        {
+            return;
+        }
+
+        var dialog = new TemplatesDialogViewModel(session.Templates, Dialogs, Notification);
+        await dialog.LoadAsync();
+        await Dialogs.ShowAsync(dialog);
+    });
+
+    [RelayCommand]
+    private Task OpenSettingsAsync() => RunAsync(async () =>
+    {
+        var dialog = new SettingsDialogViewModel(
+            _settings,
+            _theme,
+            _hotkey,
+            _folderPicker,
+            Notification,
+            _dispatcher,
+            Filters.ProjectNames,
+            QuickCaptureShortcut,
+            HasVault ? Reindex : null);
+        await Dialogs.ShowAsync(dialog);
+        _theme.Apply(_settings.Current);
+        UpdateGitContext();
+    });
+
+    [RelayCommand(CanExecute = nameof(HasActiveProject))]
+    private void FilterActiveProject()
+    {
+        if (ActiveProject is { } project)
+        {
+            Filters.ToggleProject(project.Name);
+        }
+    }
+
 
     [RelayCommand(CanExecute = nameof(HasOpenNote))]
     private Task SaveAsync() => RunAsync(() => Editor.FlushAsync());
@@ -715,7 +858,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
             await NoteList.RefreshAsync();
             await Editor.HandleNotesChangedAsync(change);
             await UpdateNoteCountAsync();
+            await RefreshFiltersAsync();
         });
+    }
+
+    /// <summary>Reloads the facet counts and, from them, the active project.</summary>
+    public async Task RefreshFiltersAsync()
+    {
+        await Filters.RefreshAsync();
+        await Filters.WhenSettledAsync();
+        UpdateGitContext();
     }
 
     private void OnIndexStatusChanged(object? sender, IndexStatus status) =>
@@ -790,6 +942,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SwitchNoteCommand.NotifyCanExecuteChanged();
         FocusEditorCommand.NotifyCanExecuteChanged();
         FocusListCommand.NotifyCanExecuteChanged();
+        EditTemplatesCommand.NotifyCanExecuteChanged();
     }
 
     // ----- Helpers ----------------------------------------------------------------------------
