@@ -29,13 +29,24 @@ public sealed record NoteSummary(
 /// <summary>A piece of a result fragment; matched terms are flagged so the UI can highlight them.</summary>
 public readonly record struct SnippetSegment(string Text, bool IsMatch);
 
-public sealed record SearchHit(NoteSummary Note, IReadOnlyList<SnippetSegment> Snippet, double Score);
+/// <param name="Note">The matching note.</param>
+/// <param name="Title">Title split into plain and matched segments.</param>
+/// <param name="Snippet">Body fragment around the best match, split into plain and matched segments.</param>
+/// <param name="Score">BM25 rank as returned by FTS5 (lower is better).</param>
+public sealed record SearchHit(
+    NoteSummary Note,
+    IReadOnlyList<SnippetSegment> Title,
+    IReadOnlyList<SnippetSegment> Snippet,
+    double Score);
 
 public sealed record NoteListQuery(NoteSortOrder Sort, int Limit);
 
 public sealed record SearchQuery(FtsQuery Query, NoteSortOrder Sort, int Limit);
 
 /// <summary>One row of the note list: either a plain listing entry or a search hit with highlights.</summary>
-public sealed record NoteListEntry(NoteSummary Note, IReadOnlyList<SnippetSegment> Snippet);
+public sealed record NoteListEntry(
+    NoteSummary Note,
+    IReadOnlyList<SnippetSegment> Title,
+    IReadOnlyList<SnippetSegment> Snippet);
 
 public sealed record NoteQueryResult(IReadOnlyList<NoteListEntry> Entries, bool IsSearch, bool IsTruncated);

@@ -47,6 +47,7 @@ public sealed class NoteQueryServiceTests
         var result = await _service.QueryAsync(null, NoteSortOrder.UpdatedDescending, 2, Ct);
 
         result.Entries[0].Snippet.Should().Equal(new SnippetSegment("line one line two", IsMatch: false));
+        result.Entries[0].Title.Should().Equal(new SnippetSegment("Title 1", IsMatch: false));
     }
 
     [Fact]
@@ -57,6 +58,7 @@ public sealed class NoteQueryServiceTests
         result.IsSearch.Should().BeTrue();
         result.Entries.Should().HaveCount(10);
         result.Entries[0].Snippet.Should().ContainSingle().Which.IsMatch.Should().BeTrue();
+        result.Entries[0].Title.Should().HaveCount(2, "the highlighted title of the hit is passed through");
         await _index.Received(1).SearchAsync(
             Arg.Is<SearchQuery>(query =>
                 query.Query.Match == "\"deadlock\" \"OR\" \"x\"*"
@@ -109,7 +111,11 @@ public sealed class NoteQueryServiceTests
         [.. Enumerable.Range(1, count).Select(Summary)];
 
     private static IReadOnlyList<SearchHit> Hits(int count) =>
-        [.. Enumerable.Range(1, count).Select(i => new SearchHit(Summary(i), [new SnippetSegment("hit", IsMatch: true)], -i))];
+        [.. Enumerable.Range(1, count).Select(i => new SearchHit(
+            Summary(i),
+            [new SnippetSegment("Title ", IsMatch: false), new SnippetSegment($"{i}", IsMatch: true)],
+            [new SnippetSegment("hit", IsMatch: true)],
+            -i))];
 
     private static NoteSummary Summary(int i) => new(
         NoteId.Parse($"ID-{i}"),

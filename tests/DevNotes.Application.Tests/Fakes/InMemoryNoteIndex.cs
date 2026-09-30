@@ -159,7 +159,11 @@ public sealed class InMemoryNoteIndex : INoteIndex
                 .Where(note => note.Body.Contains(needle, StringComparison.OrdinalIgnoreCase)
                     || note.Metadata.Title.Contains(needle, StringComparison.OrdinalIgnoreCase))
                 .Take(query.Limit)
-                .Select(note => new SearchHit(ToSummary(note), [new SnippetSegment(needle, IsMatch: true)], Score: -1))];
+                .Select(note => new SearchHit(
+                    ToSummary(note),
+                    [new SnippetSegment(note.Metadata.Title, IsMatch: false)],
+                    [new SnippetSegment(needle, IsMatch: true)],
+                    Score: -1))];
             return Task.FromResult(hits);
         }
     }

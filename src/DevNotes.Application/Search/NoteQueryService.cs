@@ -38,7 +38,10 @@ public sealed class NoteQueryService(INoteIndex index) : INoteQueryService
             foreach (var note in notes)
             {
                 var excerpt = SnippetParser.ToSingleLine(note.Excerpt, ExcerptLength);
-                entries.Add(new NoteListEntry(note, excerpt.Length == 0 ? [] : [new SnippetSegment(excerpt, IsMatch: false)]));
+                entries.Add(new NoteListEntry(
+                    note,
+                    [new SnippetSegment(note.Title, IsMatch: false)],
+                    excerpt.Length == 0 ? [] : [new SnippetSegment(excerpt, IsMatch: false)]));
             }
         }
         else
@@ -47,7 +50,7 @@ public sealed class NoteQueryService(INoteIndex index) : INoteQueryService
             entries = new List<NoteListEntry>(hits.Count);
             foreach (var hit in hits)
             {
-                entries.Add(new NoteListEntry(hit.Note, hit.Snippet));
+                entries.Add(new NoteListEntry(hit.Note, hit.Title, hit.Snippet));
             }
         }
 
