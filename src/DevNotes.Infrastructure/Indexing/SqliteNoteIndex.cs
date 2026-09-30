@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 using DevNotes.Application.Abstractions;
@@ -20,12 +21,17 @@ namespace DevNotes.Infrastructure.Indexing;
 public sealed partial class SqliteNoteIndex : INoteIndex
 {
     private const string DateFormat = "yyyy-MM-dd";
+    private const int SqliteGenericError = 1;
     private const int SqliteCorrupt = 11;
     private const int SqliteNotADatabase = 26;
 
     private readonly string _connectionString;
     private readonly string? _databasePath;
     private readonly ILogger _logger;
+    [SuppressMessage(
+        "Usage",
+        "CA2213:Disposable fields should be disposed",
+        Justification = "Writers queued behind a disposal must still be able to take and release it; no wait handle is ever allocated.")]
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private SqliteConnection? _keepAlive;
     private int _disposed;
@@ -64,6 +70,7 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
             await Task.Run(() => EnsureSchema(allowRecreate: true), cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -242,7 +249,8 @@ public sealed partial class SqliteNoteIndex : INoteIndex
                 {
                     NoteSortOrder.UpdatedDescending => rows
                         .OrderByDescending(row => row.SortDate, StringComparer.Ordinal)
-                        .ThenByDescending(row => row.FileTicks),
+                        .ThenByDescending(row => row.FileTicks)
+                        .ThenBy(row => row.Hit.Note.Path),
                     NoteSortOrder.TitleAscending => rows
                         .OrderBy(row => row.TitleSort, StringComparer.Ordinal)
                         .ThenBy(row => row.Hit.Note.Path),
@@ -261,7 +269,8 @@ public sealed partial class SqliteNoteIndex : INoteIndex
             return;
         }
 
-        // Wait for a writer in flight so the database is never closed mid-transaction.
+        // Wait for a writer in flight so the database is never closed mid-transaction. Writers still
+        // queued behind it see the disposed flag as soon as they get the gate and give up.
         await _writeGate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -272,7 +281,6 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         finally
         {
             _writeGate.Release();
-            _writeGate.Dispose();
         }
     }
 
@@ -369,13 +377,21 @@ public sealed partial class SqliteNoteIndex : INoteIndex
                     summary.TitleSort));
             }
         }
-        catch (SqliteException exception) when (exception.SqliteErrorCode == 1)
+        catch (SqliteException exception) when (IsRejectedSearchExpression(exception))
         {
             // The query builder only emits quoted terms, so this is not expected. If FTS5 still rejects an
             // expression the search yields no hits for that index instead of failing the whole UI.
-            LogSearchRejected(exception);
+            LogSearchRejected(exception.SqliteExtendedErrorCode);
         }
     }
+
+    /// <summary>
+    /// True only for the generic SQLite error raised by the FTS5 query parser. Any other error with
+    /// the same code (a missing table, a mistake in the statement) is a defect and must surface
+    /// instead of looking like "no results".
+    /// </summary>
+    private static bool IsRejectedSearchExpression(SqliteException exception) =>
+        exception.SqliteErrorCode == SqliteGenericError && exception.Message.Contains("fts5:", StringComparison.OrdinalIgnoreCase);
 
     private static SummaryRow? ReadSummary(SqliteDataReader reader, string excerpt)
     {
@@ -424,6 +440,8 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // The index may have been closed while this writer waited for its turn.
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
             await Task.Run(
                 () =>
                 {
@@ -484,7 +502,11 @@ public sealed partial class SqliteNoteIndex : INoteIndex
                 wal.ExecuteScalar();
             }
 
+            // The version is read under the write lock: another process opening the same fresh database
+            // must not see "no schema yet" as well and wipe what this one is about to create.
+            using var transaction = connection.BeginTransaction(deferred: false);
             using var versionCommand = connection.CreateCommand();
+            versionCommand.Transaction = transaction;
             versionCommand.CommandText = "PRAGMA user_version;";
             var version = Convert.ToInt32(versionCommand.ExecuteScalar(), CultureInfo.InvariantCulture);
             if (version == IndexSchema.Version)
@@ -497,7 +519,6 @@ public sealed partial class SqliteNoteIndex : INoteIndex
                 LogSchemaRebuilt(version, IndexSchema.Version);
             }
 
-            using var transaction = connection.BeginTransaction(deferred: false);
             Execute(connection, transaction, IndexSchema.Drop);
             Execute(connection, transaction, IndexSchema.Create);
             Execute(connection, transaction, $"PRAGMA user_version = {IndexSchema.Version.ToString(CultureInfo.InvariantCulture)};");
@@ -556,8 +577,9 @@ public sealed partial class SqliteNoteIndex : INoteIndex
     [LoggerMessage(EventId = 501, Level = LogLevel.Information, Message = "Index schema version {Found} replaced by version {Expected}; the index will be rebuilt")]
     private partial void LogSchemaRebuilt(int found, int expected);
 
-    [LoggerMessage(EventId = 502, Level = LogLevel.Warning, Message = "FTS5 rejected a search expression")]
-    private partial void LogSearchRejected(Exception exception);
+    // The exception is not logged on purpose: its message quotes the search text, which is user content.
+    [LoggerMessage(EventId = 502, Level = LogLevel.Warning, Message = "FTS5 rejected a search expression (SQLite extended code {Code})")]
+    private partial void LogSearchRejected(int code);
 
     [LoggerMessage(EventId = 503, Level = LogLevel.Debug, Message = "WAL checkpoint on close failed")]
     private partial void LogCheckpointFailed(Exception exception);

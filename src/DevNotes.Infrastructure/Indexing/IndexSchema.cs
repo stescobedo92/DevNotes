@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace DevNotes.Infrastructure.Indexing;
 
 /// <summary>
@@ -6,7 +8,7 @@ namespace DevNotes.Infrastructure.Indexing;
 /// </summary>
 internal static class IndexSchema
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     public const string WordIndex = "notes_fts";
     public const string TrigramIndex = "notes_trigram";
@@ -36,16 +38,18 @@ internal static class IndexSchema
             created      TEXT,
             updated      TEXT,
             content_hash TEXT NOT NULL,
-            body         TEXT NOT NULL,
             tags         TEXT NOT NULL,
             title_sort   TEXT NOT NULL,
             sort_date    TEXT NOT NULL,
             file_size    INTEGER NOT NULL,
-            file_mtime   INTEGER NOT NULL
+            file_mtime   INTEGER NOT NULL,
+            -- Last on purpose: SQLite stores columns in declaration order and a long text spills into
+            -- overflow pages, which would have to be followed to reach any column declared after it.
+            body         TEXT NOT NULL
         ) STRICT;
 
-        CREATE INDEX ix_notes_recent ON notes (sort_date DESC, file_mtime DESC);
-        CREATE INDEX ix_notes_title ON notes (title_sort);
+        CREATE INDEX ix_notes_recent ON notes (sort_date DESC, file_mtime DESC, path);
+        CREATE INDEX ix_notes_title ON notes (title_sort, path);
         CREATE INDEX ix_notes_project ON notes (project) WHERE project IS NOT NULL;
         CREATE INDEX ix_notes_type ON notes (type);
 
@@ -108,34 +112,76 @@ internal static class IndexSchema
     public const string ListByTitle =
         $"SELECT {SummaryColumns}, substr(n.body, 1, 320) FROM notes AS n ORDER BY n.title_sort, n.path LIMIT $limit";
 
-    private const string OrderByRelevance = "ORDER BY score, n.sort_date DESC";
-    private const string OrderByRecent = "ORDER BY n.sort_date DESC, n.file_mtime DESC, score";
-    private const string OrderByTitle = "ORDER BY n.title_sort, n.path";
+    public static readonly string WordSearchByRelevance = SearchByRelevance(WordIndex);
+    public static readonly string WordSearchByRecent = SearchBySortIndex(WordIndex, RecentOrder);
+    public static readonly string WordSearchByTitle = SearchBySortIndex(WordIndex, TitleOrder);
+    public static readonly string TrigramSearchByRelevance = SearchByRelevance(TrigramIndex);
+    public static readonly string TrigramSearchByRecent = SearchBySortIndex(TrigramIndex, RecentOrder);
+    public static readonly string TrigramSearchByTitle = SearchBySortIndex(TrigramIndex, TitleOrder);
 
-    private const string WordSearch = $"""
+    // The same orders as the plain listings, so both can be answered from ix_notes_recent / ix_notes_title.
+    // {0} is the alias of the notes table.
+    private const string RecentOrder = "{0}.sort_date DESC, {0}.file_mtime DESC, {0}.path";
+    private const string TitleOrder = "{0}.title_sort, {0}.path";
+
+    // How a search is shaped (measured with benchmarks/DevNotes.Benchmarks on 5,000 notes):
+    //
+    // 1. The innermost query picks WHICH notes are returned without touching the wide `notes` rows.
+    //    SQLite evaluates result columns before ORDER BY … LIMIT, so a single flat query would run
+    //    snippet() and highlight() - which read and tokenize the whole text - and join `notes` for
+    //    every match. The first letters the user types match almost every note, so that is
+    //    thousands of rows read to keep thirty.
+    // 2. The outer query builds the highlighted fragments for the chosen notes only.
+    //
+    // The unary plus in `+x.rowid IN (…)` is deliberate: it stops the planner from using the list as
+    // a rowid lookup (which would restart the full-text query once per row) and keeps it as a cheap
+    // membership filter on a single scan.
+
+    /// <summary>Best matches first; among equally relevant notes, the most recent first.</summary>
+    private static string SearchByRelevance(string index)
+    {
+        var score = $"bm25({index}, {Bm25Weights})";
+        return $"""
+            {SelectHits(index)}
+              AND +{index}.rowid IN (
+                  SELECT rowid
+                  FROM {index}
+                  WHERE {index} MATCH $match
+                  ORDER BY {score}, rowid
+                  LIMIT $limit)
+            ORDER BY score, n.sort_date DESC, n.rowid
+            LIMIT $limit
+            """;
+    }
+
+    /// <summary>
+    /// Matches in the order of one of the sort indexes: the index is walked in order and each entry is
+    /// checked against the set of matching rows, so the scan stops as soon as the limit is reached.
+    /// </summary>
+    private static string SearchBySortIndex(string index, string order)
+    {
+        var innerOrder = string.Format(CultureInfo.InvariantCulture, order, "m");
+        var outerOrder = string.Format(CultureInfo.InvariantCulture, order, "n");
+        return $"""
+            {SelectHits(index)}
+              AND +{index}.rowid IN (
+                  SELECT m.rowid
+                  FROM notes AS m
+                  WHERE +m.rowid IN (SELECT rowid FROM {index} WHERE {index} MATCH $match)
+                  ORDER BY {innerOrder}
+                  LIMIT $limit)
+            ORDER BY {outerOrder}
+            LIMIT $limit
+            """;
+    }
+
+    private static string SelectHits(string index) => $"""
         SELECT {SummaryColumns},
-               snippet({WordIndex}, 1, $start, $end, $ellipsis, 18),
-               highlight({WordIndex}, 0, $start, $end),
-               bm25({WordIndex}, {Bm25Weights}) AS score
-        FROM {WordIndex}
-        JOIN notes AS n ON n.rowid = {WordIndex}.rowid
-        WHERE {WordIndex} MATCH $match
+               snippet({index}, 1, $start, $end, $ellipsis, 18),
+               highlight({index}, 0, $start, $end),
+               bm25({index}, {Bm25Weights}) AS score
+        FROM {index}
+        JOIN notes AS n ON n.rowid = {index}.rowid
+        WHERE {index} MATCH $match
         """;
-
-    private const string TrigramSearch = $"""
-        SELECT {SummaryColumns},
-               snippet({TrigramIndex}, 1, $start, $end, $ellipsis, 18),
-               highlight({TrigramIndex}, 0, $start, $end),
-               bm25({TrigramIndex}, {Bm25Weights}) AS score
-        FROM {TrigramIndex}
-        JOIN notes AS n ON n.rowid = {TrigramIndex}.rowid
-        WHERE {TrigramIndex} MATCH $match
-        """;
-
-    public const string WordSearchByRelevance = $"{WordSearch}\n{OrderByRelevance} LIMIT $limit";
-    public const string WordSearchByRecent = $"{WordSearch}\n{OrderByRecent} LIMIT $limit";
-    public const string WordSearchByTitle = $"{WordSearch}\n{OrderByTitle} LIMIT $limit";
-    public const string TrigramSearchByRelevance = $"{TrigramSearch}\n{OrderByRelevance} LIMIT $limit";
-    public const string TrigramSearchByRecent = $"{TrigramSearch}\n{OrderByRecent} LIMIT $limit";
-    public const string TrigramSearchByTitle = $"{TrigramSearch}\n{OrderByTitle} LIMIT $limit";
 }

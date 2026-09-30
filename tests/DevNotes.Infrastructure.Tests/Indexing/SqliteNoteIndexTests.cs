@@ -291,6 +291,33 @@ public abstract class SqliteNoteIndexTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SearchAsync_MoreMatchesThanTheLimit_ReturnsTheFirstOnesOfEachOrder()
+    {
+        // Forty notes match; the limit must keep the first three of the requested order, not any three.
+        var notes = Enumerable.Range(0, 40).Select(i => TestNotes.Create(
+            $"n{i:D2}.md",
+            $"ID{i:D2}",
+            i == 7 ? "Common heading 07" : $"Heading {i:D2}",
+            "some common text",
+            updated: new DateOnly(2026, 8, 1).AddDays(i)));
+        await Index.UpsertAsync([.. notes], Ct);
+        var query = FtsQueryBuilder.Build("common");
+
+        var recent = await Index.SearchAsync(new SearchQuery(query, NoteSortOrder.UpdatedDescending, 3), Ct);
+        var byTitle = await Index.SearchAsync(new SearchQuery(query, NoteSortOrder.TitleAscending, 3), Ct);
+        var relevant = await Index.SearchAsync(new SearchQuery(query, NoteSortOrder.Relevance, 3), Ct);
+
+        recent.Select(hit => hit.Note.Path.Value).Should().Equal("n39.md", "n38.md", "n37.md");
+        byTitle.Select(hit => hit.Note.Path.Value).Should().Equal("n07.md", "n00.md", "n01.md");
+        relevant.Should().HaveCount(3);
+        relevant[0].Note.Path.Value.Should().Be("n07.md", "a match in the title outranks matches in the body");
+        relevant.Skip(1).Select(hit => hit.Note.Updated).Should().BeInDescendingOrder("equally relevant notes are listed most recent first");
+        recent.Concat(byTitle).Concat(relevant).Should().OnlyContain(
+            hit => hit.Snippet.Any(segment => segment.IsMatch) || hit.Title.Any(segment => segment.IsMatch),
+            "every returned note carries its highlighted fragment");
+    }
+
+    [Fact]
     public async Task SearchAsync_SubstringMatchesComeAfterWordMatches_WithoutDuplicates()
     {
         await Index.UpsertAsync(
@@ -389,6 +416,32 @@ public abstract class SqliteNoteIndexTests : IAsyncLifetime
         await FluentActions.Invoking(() => Index.InitializeAsync(Ct)).Should().ThrowAsync<ObjectDisposedException>();
     }
 
+    [Fact]
+    public async Task DisposeAsync_WhileWritersAreQueued_LetsThemFinishOrRejectsThemCleanly()
+    {
+        // Closing a vault while saves are still being indexed: every writer either completes or is told
+        // the index is closed. No other failure (such as releasing a lock that no longer exists) may leak.
+        var writers = Enumerable.Range(0, 40).Select(i => Task.Run(
+            async () =>
+            {
+                try
+                {
+                    await Index.UpsertAsync([TestNotes.Create($"n{i}.md", $"N{i}", $"Note {i}", new string('x', 2_000))], Ct);
+                    return (Exception?)null;
+                }
+                catch (Exception exception)
+                {
+                    return exception;
+                }
+            },
+            Ct)).ToList();
+
+        await Index.DisposeAsync();
+        var outcomes = await Task.WhenAll(writers);
+
+        outcomes.Where(outcome => outcome is not null).Should().AllBeOfType<ObjectDisposedException>();
+    }
+
     [Theory]
     [InlineData("Ábaco", "ABACO")]
     [InlineData("ñandú", "NANDU")]
@@ -440,7 +493,7 @@ public sealed class OnDiskSqliteNoteIndexTests : SqliteNoteIndexTests
         await using var connection = await OpenRawAsync();
 
         (await ScalarAsync(connection, "PRAGMA journal_mode")).Should().Be("wal");
-        (await ScalarAsync(connection, "PRAGMA user_version")).Should().Be(1L);
+        (await ScalarAsync(connection, "PRAGMA user_version")).Should().Be((long)IndexSchema.Version);
 
         var version = Version.Parse((string)(await ScalarAsync(connection, "SELECT sqlite_version()"))!);
         version.Should().BeGreaterThanOrEqualTo(new Version(3, 45), "the trigram tokenizer needs remove_diacritics support");
@@ -524,7 +577,7 @@ public sealed class OnDiskSqliteNoteIndexTests : SqliteNoteIndexTests
 
         (await upgraded.CountAsync(Ct)).Should().Be(0, "a disposable index is rebuilt instead of migrated");
         await using var check = await OpenRawAsync();
-        (await ScalarAsync(check, "PRAGMA user_version")).Should().Be(1L);
+        (await ScalarAsync(check, "PRAGMA user_version")).Should().Be((long)IndexSchema.Version);
     }
 
     [Fact]
