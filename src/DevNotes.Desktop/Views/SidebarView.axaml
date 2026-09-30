@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DevNotes.Desktop.ViewModels"
+             xmlns:res="using:DevNotes.Desktop.Resources"
+             x:Class="DevNotes.Desktop.Views.SidebarView"
+             x:DataType="vm:MainWindowViewModel"
+             AutomationProperties.Name="{x:Static res:Strings.A11y_Sidebar}">
+  <Border Classes="panel panelLeft">
+    <DockPanel>
+
+      <StackPanel DockPanel.Dock="Bottom" Margin="{DynamicResource Inset1}">
+        <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Sidebar_Actions}" />
+        <Button Classes="ghost wide"
+                Command="{Binding NewNoteCommand}"
+                Content="{x:Static res:Strings.Sidebar_NewNote}"
+                AutomationProperties.AcceleratorKey="{Binding NewNoteShortcut}" />
+        <Button Classes="ghost wide"
+                Command="{Binding OpenTrashCommand}"
+                Content="{x:Static res:Strings.Sidebar_Trash}" />
+        <Button Classes="ghost wide"
+                Command="{Binding ReindexCommand}"
+                Content="{x:Static res:Strings.Sidebar_Reindex}" />
+        <Button Classes="ghost wide"
+                Command="{Binding AddVaultCommand}"
+                Content="{x:Static res:Strings.Sidebar_AddVault}" />
+      </StackPanel>
+
+      <TextBlock DockPanel.Dock="Top" Classes="sectionHeader" Text="{x:Static res:Strings.Sidebar_Vaults}" />
+
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Vaults}"
+                      Margin="{DynamicResource Inset1}"
+                      AutomationProperties.Name="{x:Static res:Strings.A11y_VaultList}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:VaultItemViewModel">
+              <Grid ColumnDefinitions="*,Auto">
+                <Button Classes="ghost wide"
+                        Classes.active="{Binding IsActive}"
+                        Command="{Binding $parent[UserControl].((vm:MainWindowViewModel)DataContext).SwitchVaultCommand}"
+                        CommandParameter="{Binding}"
+                        ToolTip.Tip="{Binding Path}">
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                </Button>
+                <Button Grid.Column="1"
+                        Classes="ghost"
+                        Command="{Binding $parent[UserControl].((vm:MainWindowViewModel)DataContext).RemoveVaultCommand}"
+                        CommandParameter="{Binding}"
+                        Content="✕"
+                        ToolTip.Tip="{x:Static res:Strings.Sidebar_RemoveVault}"
+                        AutomationProperties.Name="{x:Static res:Strings.Sidebar_RemoveVault}" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+    </DockPanel>
+  </Border>
+</UserControl>

@@ -1,0 +1,166 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Design tokens. Every colour, spacing, radius, font and shadow used by the views is defined
+    here (and only here); views reference tokens through DynamicResource and never hard-code values.
+  -->
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <ResourceDictionary x:Key="Dark">
+      <Color x:Key="ColorBackground">#0F1115</Color>
+      <Color x:Key="ColorSurface">#161A21</Color>
+      <Color x:Key="ColorElevated">#1D222B</Color>
+      <Color x:Key="ColorBorder">#2A303B</Color>
+      <Color x:Key="ColorTextPrimary">#E6E9EF</Color>
+      <Color x:Key="ColorTextSecondary">#9AA3B2</Color>
+      <Color x:Key="ColorAccent">#4C8DFF</Color>
+      <Color x:Key="ColorOnAccent">#0B1220</Color>
+      <Color x:Key="ColorSuccess">#3FB950</Color>
+      <Color x:Key="ColorWarning">#D29922</Color>
+      <Color x:Key="ColorError">#F85149</Color>
+      <Color x:Key="ColorAccentSubtle">#334C8DFF</Color>
+      <Color x:Key="ColorHover">#14FFFFFF</Color>
+      <Color x:Key="ColorMatchHighlight">#59D29922</Color>
+      <Color x:Key="ColorWarningSubtle">#26D29922</Color>
+      <Color x:Key="ColorErrorSubtle">#26F85149</Color>
+      <Color x:Key="ColorScrim">#99000000</Color>
+      <Color x:Key="ColorShadow">#80000000</Color>
+
+      <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource ColorBackground}" />
+      <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource ColorSurface}" />
+      <SolidColorBrush x:Key="ElevatedBrush" Color="{StaticResource ColorElevated}" />
+      <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource ColorBorder}" />
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource ColorTextPrimary}" />
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource ColorTextSecondary}" />
+      <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource ColorAccent}" />
+      <SolidColorBrush x:Key="OnAccentBrush" Color="{StaticResource ColorOnAccent}" />
+      <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource ColorSuccess}" />
+      <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource ColorWarning}" />
+      <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ColorError}" />
+      <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource ColorAccentSubtle}" />
+      <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource ColorHover}" />
+      <SolidColorBrush x:Key="MatchHighlightBrush" Color="{StaticResource ColorMatchHighlight}" />
+      <SolidColorBrush x:Key="WarningSubtleBrush" Color="{StaticResource ColorWarningSubtle}" />
+      <SolidColorBrush x:Key="ErrorSubtleBrush" Color="{StaticResource ColorErrorSubtle}" />
+      <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ColorScrim}" />
+      <BoxShadows x:Key="ShadowOverlay">0 12 40 0 #80000000</BoxShadows>
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="ColorBackground">#FFFFFF</Color>
+      <Color x:Key="ColorSurface">#F6F8FA</Color>
+      <Color x:Key="ColorElevated">#FFFFFF</Color>
+      <Color x:Key="ColorBorder">#D8DEE4</Color>
+      <Color x:Key="ColorTextPrimary">#1F2328</Color>
+      <Color x:Key="ColorTextSecondary">#59636E</Color>
+      <Color x:Key="ColorAccent">#0969DA</Color>
+      <Color x:Key="ColorOnAccent">#FFFFFF</Color>
+      <Color x:Key="ColorSuccess">#1A7F37</Color>
+      <Color x:Key="ColorWarning">#9A6700</Color>
+      <Color x:Key="ColorError">#CF222E</Color>
+      <Color x:Key="ColorAccentSubtle">#260969DA</Color>
+      <Color x:Key="ColorHover">#0F1F2328</Color>
+      <Color x:Key="ColorMatchHighlight">#66FFD33D</Color>
+      <Color x:Key="ColorWarningSubtle">#269A6700</Color>
+      <Color x:Key="ColorErrorSubtle">#1FCF222E</Color>
+      <Color x:Key="ColorScrim">#661F2328</Color>
+      <Color x:Key="ColorShadow">#331F2328</Color>
+
+      <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource ColorBackground}" />
+      <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource ColorSurface}" />
+      <SolidColorBrush x:Key="ElevatedBrush" Color="{StaticResource ColorElevated}" />
+      <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource ColorBorder}" />
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource ColorTextPrimary}" />
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource ColorTextSecondary}" />
+      <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource ColorAccent}" />
+      <SolidColorBrush x:Key="OnAccentBrush" Color="{StaticResource ColorOnAccent}" />
+      <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource ColorSuccess}" />
+      <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource ColorWarning}" />
+      <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ColorError}" />
+      <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource ColorAccentSubtle}" />
+      <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource ColorHover}" />
+      <SolidColorBrush x:Key="MatchHighlightBrush" Color="{StaticResource ColorMatchHighlight}" />
+      <SolidColorBrush x:Key="WarningSubtleBrush" Color="{StaticResource ColorWarningSubtle}" />
+      <SolidColorBrush x:Key="ErrorSubtleBrush" Color="{StaticResource ColorErrorSubtle}" />
+      <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ColorScrim}" />
+      <BoxShadows x:Key="ShadowOverlay">0 12 40 0 #331F2328</BoxShadows>
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- Spacing: 4 px scale -->
+  <x:Double x:Key="Space1">4</x:Double>
+  <x:Double x:Key="Space2">8</x:Double>
+  <x:Double x:Key="Space3">12</x:Double>
+  <x:Double x:Key="Space4">16</x:Double>
+  <x:Double x:Key="Space6">24</x:Double>
+  <x:Double x:Key="Space8">32</x:Double>
+
+  <Thickness x:Key="Inset1">4</Thickness>
+  <Thickness x:Key="Inset2">8</Thickness>
+  <Thickness x:Key="Inset3">12</Thickness>
+  <Thickness x:Key="Inset4">16</Thickness>
+  <Thickness x:Key="Inset6">24</Thickness>
+  <Thickness x:Key="InsetControl">8,4</Thickness>
+  <Thickness x:Key="InsetButton">12,6</Thickness>
+  <Thickness x:Key="InsetChip">8,1</Thickness>
+  <Thickness x:Key="InsetStatusBar">12,4</Thickness>
+  <Thickness x:Key="InsetSectionHeader">12,12,12,4</Thickness>
+  <Thickness x:Key="InsetPreview">24,16</Thickness>
+  <Thickness x:Key="InsetCode">12,8,12,12</Thickness>
+  <Thickness x:Key="InsetCodeHeader">12,4,4,4</Thickness>
+  <Thickness x:Key="InsetQuote">12,4</Thickness>
+  <Thickness x:Key="InsetTableCell">8,4</Thickness>
+  <Thickness x:Key="GapBelow1">0,0,0,4</Thickness>
+  <Thickness x:Key="GapBelow2">0,0,0,8</Thickness>
+  <Thickness x:Key="GapBelow3">0,0,0,12</Thickness>
+  <Thickness x:Key="GapRight1">0,0,4,0</Thickness>
+  <Thickness x:Key="GapRight2">0,0,8,0</Thickness>
+  <Thickness x:Key="GapAbove2">0,8,0,0</Thickness>
+  <Thickness x:Key="GapAbove4">0,16,0,0</Thickness>
+  <Thickness x:Key="GapHeading">0,12,0,4</Thickness>
+  <Thickness x:Key="GapListIndent">4,0,0,0</Thickness>
+
+  <!-- Density-dependent tokens; replaced at run time by the theme service (comfortable values here). -->
+  <Thickness x:Key="InsetListItem">12,8</Thickness>
+  <Thickness x:Key="InsetSidebarItem">12,6</Thickness>
+
+  <!-- Borders and radii -->
+  <Thickness x:Key="BorderThin">1</Thickness>
+  <Thickness x:Key="BorderNone">0</Thickness>
+  <Thickness x:Key="BorderRight">0,0,1,0</Thickness>
+  <Thickness x:Key="BorderLeft">1,0,0,0</Thickness>
+  <Thickness x:Key="BorderTop">0,1,0,0</Thickness>
+  <Thickness x:Key="BorderBottom">0,0,0,1</Thickness>
+  <Thickness x:Key="BorderQuote">3,0,0,0</Thickness>
+  <CornerRadius x:Key="RadiusSmall">6</CornerRadius>
+  <CornerRadius x:Key="RadiusMedium">8</CornerRadius>
+  <CornerRadius x:Key="RadiusPill">999</CornerRadius>
+  <CornerRadius x:Key="RadiusCodeHeader">6,6,0,0</CornerRadius>
+
+  <!-- Sizes -->
+  <x:Double x:Key="WindowMinWidth">720</x:Double>
+  <x:Double x:Key="WindowMinHeight">480</x:Double>
+  <x:Double x:Key="SplitterThickness">5</x:Double>
+  <x:Double x:Key="ProjectDotSize">8</x:Double>
+  <x:Double x:Key="OverlayWidth">640</x:Double>
+  <x:Double x:Key="OverlayMaxHeight">440</x:Double>
+  <x:Double x:Key="DialogWidth">460</x:Double>
+  <x:Double x:Key="EmptyStateWidth">420</x:Double>
+  <x:Double x:Key="IndexProgressWidth">96</x:Double>
+
+  <!-- Typography. Sizes derive from FontSizeBase, which the theme service scales (Ctrl +/-). -->
+  <FontFamily x:Key="UiFontFamily">Segoe UI Variable Text, Segoe UI, SF Pro Text, .AppleSystemUIFont, fonts:Inter#Inter, sans-serif</FontFamily>
+  <FontFamily x:Key="CodeFontFamily">JetBrains Mono, Cascadia Code, Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace</FontFamily>
+  <x:Double x:Key="FontSizeBase">14</x:Double>
+  <x:Double x:Key="FontSizeSmall">12</x:Double>
+  <x:Double x:Key="FontSizeCode">13</x:Double>
+  <x:Double x:Key="FontSizeLarge">16</x:Double>
+  <x:Double x:Key="FontSizeH1">26</x:Double>
+  <x:Double x:Key="FontSizeH2">21</x:Double>
+  <x:Double x:Key="FontSizeH3">18</x:Double>
+  <x:Double x:Key="FontSizeH4">16</x:Double>
+
+</ResourceDictionary>

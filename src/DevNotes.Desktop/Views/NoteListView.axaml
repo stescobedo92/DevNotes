@@ -1,0 +1,139 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DevNotes.Desktop.ViewModels"
+             xmlns:res="using:DevNotes.Desktop.Resources"
+             xmlns:controls="using:DevNotes.Desktop.Controls"
+             xmlns:conv="using:DevNotes.Desktop.Converters"
+             x:Class="DevNotes.Desktop.Views.NoteListView"
+             x:DataType="vm:NoteListViewModel">
+  <DockPanel>
+
+    <Border DockPanel.Dock="Top" Classes="panel panelTop" Padding="{DynamicResource Inset2}">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox x:Name="SearchBox"
+                 Text="{Binding SearchText}"
+                 PlaceholderText="{x:Static res:Strings.Search_Placeholder}"
+                 AutomationProperties.Name="{x:Static res:Strings.A11y_SearchBox}"
+                 KeyDown="OnSearchBoxKeyDown" />
+        <ComboBox Grid.Column="1"
+                  Margin="{DynamicResource GapListIndent}"
+                  ItemsSource="{Binding SortOptions}"
+                  SelectedItem="{Binding SelectedSort}"
+                  DisplayMemberBinding="{Binding Label, x:DataType=vm:NoteSortOption}"
+                  AutomationProperties.Name="{x:Static res:Strings.Sort_Label}"
+                  ToolTip.Tip="{x:Static res:Strings.Sort_Label}" />
+      </Grid>
+    </Border>
+
+    <ProgressBar DockPanel.Dock="Top"
+                 IsIndeterminate="True"
+                 IsVisible="{Binding IsBusy}"
+                 AutomationProperties.Name="{x:Static res:Strings.List_Searching}" />
+
+    <TextBlock DockPanel.Dock="Bottom"
+               Classes="secondary small"
+               Margin="{DynamicResource InsetControl}"
+               IsVisible="{Binding IsTruncated}"
+               Text="{Binding TruncatedText}" />
+
+    <Panel>
+      <ListBox x:Name="NoteItems"
+               Classes="flat"
+               ItemsSource="{Binding Items}"
+               SelectedItem="{Binding SelectedItem}"
+               IsVisible="{Binding HasNotes}"
+               AutomationProperties.Name="{x:Static res:Strings.A11y_NoteList}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:NoteListItemViewModel">
+            <Grid RowDefinitions="Auto,Auto,Auto"
+                  ColumnDefinitions="*,Auto"
+                  AutomationProperties.Name="{Binding AccessibleName}">
+              <controls:SegmentedTextBlock Classes="strong"
+                                           Segments="{Binding Title}"
+                                           HighlightBrush="{DynamicResource MatchHighlightBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="1"
+                         Classes="secondary small"
+                         VerticalAlignment="Center"
+                         Margin="{DynamicResource GapListIndent}"
+                         Text="{Binding DateText}" />
+
+              <controls:SegmentedTextBlock Grid.Row="1"
+                                           Grid.ColumnSpan="2"
+                                           Classes="secondary small"
+                                           Segments="{Binding Snippet}"
+                                           HighlightBrush="{DynamicResource MatchHighlightBrush}"
+                                           IsVisible="{Binding HasSnippet}"
+                                           TextWrapping="Wrap"
+                                           MaxLines="2"
+                                           TextTrimming="CharacterEllipsis" />
+
+              <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="{DynamicResource GapAbove2}">
+                <Border Classes="chip"
+                        IsVisible="{Binding HasProject}"
+                        BorderBrush="{Binding Project, Converter={x:Static conv:NameToBrushConverter.Solid}}"
+                        Background="{Binding Project, Converter={x:Static conv:NameToBrushConverter.Tint}}">
+                  <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="{DynamicResource ProjectDotSize}"
+                             Height="{DynamicResource ProjectDotSize}"
+                             Margin="{DynamicResource GapRight1}"
+                             VerticalAlignment="Center"
+                             Fill="{Binding Project, Converter={x:Static conv:NameToBrushConverter.Solid}}" />
+                    <TextBlock Text="{Binding Project}" />
+                  </StackPanel>
+                </Border>
+                <Border Classes="chip neutral">
+                  <TextBlock Classes="secondary" Text="{Binding TypeLabel}" />
+                </Border>
+                <ItemsControl ItemsSource="{Binding Tags}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                      <Border Classes="chip"
+                              BorderBrush="{Binding Converter={x:Static conv:NameToBrushConverter.Solid}}"
+                              Background="{Binding Converter={x:Static conv:NameToBrushConverter.Tint}}">
+                        <TextBlock Text="{Binding StringFormat='#{0}'}" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <StackPanel IsVisible="{Binding IsEmptyVault}"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  MaxWidth="{DynamicResource EmptyStateWidth}"
+                  Margin="{DynamicResource Inset4}">
+        <TextBlock Classes="title" TextAlignment="Center" TextWrapping="Wrap" Text="{x:Static res:Strings.Empty_NoNotes_Title}" />
+        <TextBlock Classes="secondary" TextAlignment="Center" TextWrapping="Wrap" Margin="{DynamicResource GapAbove2}" Text="{Binding EmptyVaultHint}" />
+      </StackPanel>
+
+      <StackPanel IsVisible="{Binding IsNoVault}"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  MaxWidth="{DynamicResource EmptyStateWidth}"
+                  Margin="{DynamicResource Inset4}">
+        <TextBlock Classes="title" TextAlignment="Center" TextWrapping="Wrap" Text="{x:Static res:Strings.Empty_NoVault_Title}" />
+        <TextBlock Classes="secondary" TextAlignment="Center" TextWrapping="Wrap" Margin="{DynamicResource GapAbove2}" Text="{x:Static res:Strings.Empty_NoVault_Hint}" />
+      </StackPanel>
+
+      <StackPanel IsVisible="{Binding HasNoResults}"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  MaxWidth="{DynamicResource EmptyStateWidth}"
+                  Margin="{DynamicResource Inset4}">
+        <TextBlock Classes="title" TextAlignment="Center" TextWrapping="Wrap" Text="{x:Static res:Strings.Empty_NoResults_Title}" />
+        <TextBlock Classes="secondary" TextAlignment="Center" TextWrapping="Wrap" Margin="{DynamicResource GapAbove2}" Text="{x:Static res:Strings.Empty_NoResults_Hint}" />
+      </StackPanel>
+    </Panel>
+
+  </DockPanel>
+</UserControl>

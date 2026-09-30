@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DevNotes.Desktop.ViewModels"
+             xmlns:res="using:DevNotes.Desktop.Resources"
+             xmlns:controls="using:DevNotes.Desktop.Controls"
+             x:Class="DevNotes.Desktop.Views.QuickOpenView"
+             x:DataType="vm:QuickOpenViewModel"
+             IsVisible="{Binding IsOpen}">
+  <Panel>
+    <!-- Clicking outside the card dismisses the overlay -->
+    <Border Classes="scrim" PointerPressed="OnScrimPressed" />
+
+    <Border Classes="card"
+            Width="{DynamicResource OverlayWidth}"
+            MaxHeight="{DynamicResource OverlayMaxHeight}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="{DynamicResource Inset6}"
+            KeyboardNavigation.TabNavigation="Cycle"
+            KeyDown="OnCardKeyDown">
+      <DockPanel>
+        <Border DockPanel.Dock="Top" Classes="panelTop" BorderBrush="{DynamicResource BorderBrush}" Padding="{DynamicResource Inset2}">
+          <TextBox x:Name="QueryBox"
+                   Classes="borderless"
+                   Text="{Binding Query}"
+                   PlaceholderText="{Binding Placeholder}"
+                   AutomationProperties.Name="{x:Static res:Strings.A11y_QuickOpenInput}" />
+        </Border>
+
+        <Panel>
+          <ListBox x:Name="Results"
+                   Classes="flat"
+                   ItemsSource="{Binding Items}"
+                   SelectedItem="{Binding SelectedItem}"
+                   DoubleTapped="OnResultDoubleTapped"
+                   AutomationProperties.Name="{x:Static res:Strings.A11y_QuickOpenResults}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:QuickOpenItemViewModel">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" AutomationProperties.Name="{Binding AccessibleName}">
+                  <controls:SegmentedTextBlock Segments="{Binding Title}"
+                                               HighlightBrush="{DynamicResource MatchHighlightBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="1"
+                             Classes="secondary small"
+                             VerticalAlignment="Center"
+                             Margin="{DynamicResource GapListIndent}"
+                             Text="{Binding Hint}" />
+                  <controls:SegmentedTextBlock Grid.Row="1"
+                                               Grid.ColumnSpan="2"
+                                               Classes="secondary small"
+                                               Segments="{Binding Detail}"
+                                               HighlightBrush="{DynamicResource MatchHighlightBrush}"
+                                               IsVisible="{Binding HasDetail}"
+                                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock Classes="secondary"
+                     Margin="{DynamicResource Inset4}"
+                     HorizontalAlignment="Center"
+                     IsVisible="{Binding HasNoMatches}"
+                     Text="{x:Static res:Strings.Quick_NoMatches}" />
+        </Panel>
+      </DockPanel>
+    </Border>
+  </Panel>
+</UserControl>

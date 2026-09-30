@@ -7,6 +7,11 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <SatelliteResourceLanguages>en;es</SatelliteResourceLanguages>
+    <!--
+      Strings.Designer.cs is generated from Strings.resx by the ResGen step. Making compilation depend on it
+      also generates it in design-time builds, so IDEs and `dotnet format` see the class on a fresh clone.
+    -->
+    <CoreCompileDependsOn>PrepareResources;$(CoreCompileDependsOn)</CoreCompileDependsOn>
   </PropertyGroup>
 
   <ItemGroup>

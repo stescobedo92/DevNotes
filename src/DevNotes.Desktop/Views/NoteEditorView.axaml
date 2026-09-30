@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DevNotes.Desktop.ViewModels"
+             xmlns:settings="using:DevNotes.Application.Settings"
+             xmlns:res="using:DevNotes.Desktop.Resources"
+             xmlns:controls="using:DevNotes.Desktop.Controls"
+             xmlns:ae="using:AvaloniaEdit"
+             x:Class="DevNotes.Desktop.Views.NoteEditorView"
+             x:DataType="vm:NoteEditorViewModel">
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
+
+    <!-- Toolbar: title, save state and view mode -->
+    <Border Classes="panel panelTop" Padding="{DynamicResource InsetControl}">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Classes="title"
+                   VerticalAlignment="Center"
+                   Text="{Binding Title}"
+                   TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="1"
+                   x:Name="SaveStateText"
+                   Classes="secondary small"
+                   Classes.error="{Binding HasProblem}"
+                   VerticalAlignment="Center"
+                   Margin="{DynamicResource GapRight2}"
+                   Text="{Binding StateText}"
+                   AutomationProperties.LiveSetting="Polite" />
+        <StackPanel Grid.Column="2"
+                    Orientation="Horizontal"
+                    AutomationProperties.Name="{x:Static res:Strings.A11y_ViewMode}">
+          <Button Classes="ghost"
+                  Classes.active="{Binding IsEditorOnly}"
+                  Command="{Binding SetViewModeCommand}"
+                  CommandParameter="{x:Static settings:EditorViewMode.Editor}"
+                  Content="{x:Static res:Strings.Mode_Editor}" />
+          <Button Classes="ghost"
+                  Classes.active="{Binding IsSplit}"
+                  Command="{Binding SetViewModeCommand}"
+                  CommandParameter="{x:Static settings:EditorViewMode.Split}"
+                  Content="{x:Static res:Strings.Mode_Split}" />
+          <Button Classes="ghost"
+                  Classes.active="{Binding IsPreviewOnly}"
+                  Command="{Binding SetViewModeCommand}"
+                  CommandParameter="{x:Static settings:EditorViewMode.Preview}"
+                  Content="{x:Static res:Strings.Mode_Preview}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Conflict: the file changed outside the app; nothing is overwritten until the user decides -->
+    <Border Grid.Row="1" Classes="banner warning" IsVisible="{Binding IsConflict}">
+      <StackPanel>
+        <TextBlock TextWrapping="Wrap" Text="{Binding ConflictMessage}" AutomationProperties.LiveSetting="Assertive" />
+        <StackPanel Orientation="Horizontal" Margin="{DynamicResource GapAbove2}">
+          <Button Classes="primary"
+                  Margin="{DynamicResource GapRight2}"
+                  Command="{Binding KeepMineCommand}"
+                  Content="{x:Static res:Strings.Conflict_KeepMine}" />
+          <Button Margin="{DynamicResource GapRight2}"
+                  IsVisible="{Binding CanLoadDiskVersion}"
+                  Command="{Binding LoadDiskCommand}"
+                  Content="{x:Static res:Strings.Conflict_LoadDisk}" />
+          <Button Margin="{DynamicResource GapRight2}"
+                  IsVisible="{Binding CanLoadDiskVersion}"
+                  Command="{Binding SaveCopyCommand}"
+                  Content="{x:Static res:Strings.Conflict_SaveCopy}" />
+          <Button IsVisible="{Binding !CanLoadDiskVersion}"
+                  Command="{Binding LoadDiskCommand}"
+                  Content="{x:Static res:Strings.Conflict_Discard}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Classes="banner warning" IsVisible="{Binding HasFrontmatterWarning}">
+      <TextBlock Classes="small" TextWrapping="Wrap" Text="{Binding FrontmatterWarning}" />
+    </Border>
+
+    <!-- Editor and preview panes; the code-behind sizes the columns for the view mode -->
+    <Grid Grid.Row="3" x:Name="Panes" ColumnDefinitions="*,Auto,*">
+      <ae:TextEditor x:Name="Editor"
+                     IsVisible="{Binding IsEditorVisible}"
+                     WordWrap="True"
+                     ShowLineNumbers="False"
+                     Padding="{DynamicResource Inset4}"
+                     HorizontalScrollBarVisibility="Disabled"
+                     VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.Name="{x:Static res:Strings.A11y_Editor}" />
+
+      <GridSplitter Grid.Column="1"
+                    Width="{DynamicResource SplitterThickness}"
+                    ResizeDirection="Columns"
+                    IsVisible="{Binding IsSplit}" />
+
+      <Border Grid.Column="2"
+              Classes="panel"
+              Classes.panelRight="{Binding IsSplit}"
+              IsVisible="{Binding IsPreviewVisible}">
+        <ScrollViewer x:Name="PreviewScroller"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      AutomationProperties.Name="{x:Static res:Strings.A11y_Preview}">
+          <controls:MarkdownView Margin="{DynamicResource InsetPreview}"
+                                 IsActive="{Binding IsPreviewVisible}"
+                                 Markdown="{Binding PreviewMarkdown}"
+                                 Highlighter="{Binding Highlighter}"
+                                 IsDark="{Binding IsDarkTheme}"
+                                 LinkCommand="{Binding OpenLinkCommand}"
+                                 CopyCodeCommand="{Binding CopyCodeCommand}" />
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+  </Grid>
+</UserControl>

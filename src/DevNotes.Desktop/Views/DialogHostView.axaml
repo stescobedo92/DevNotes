@@ -1,0 +1,135 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dialogs="using:DevNotes.Desktop.ViewModels.Dialogs"
+             xmlns:res="using:DevNotes.Desktop.Resources"
+             x:Class="DevNotes.Desktop.Views.DialogHostView"
+             x:DataType="dialogs:DialogHostViewModel"
+             IsVisible="{Binding IsOpen}">
+  <UserControl.DataTemplates>
+
+    <DataTemplate DataType="dialogs:ConfirmDialogViewModel">
+      <StackPanel>
+        <TextBlock TextWrapping="Wrap" Text="{Binding Message}" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{DynamicResource GapAbove4}">
+          <Button x:Name="CancelButton"
+                  Margin="{DynamicResource GapRight2}"
+                  Command="{Binding CancelCommand}"
+                  Content="{x:Static res:Strings.Action_Cancel}" />
+          <Button x:Name="ConfirmButton"
+                  Classes.primary="{Binding !IsDestructive}"
+                  Classes.danger="{Binding IsDestructive}"
+                  Command="{Binding ConfirmCommand}"
+                  Content="{Binding ConfirmText}" />
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="dialogs:PromptDialogViewModel">
+      <StackPanel>
+        <TextBlock x:Name="PromptLabel" Classes="secondary small" Margin="{DynamicResource GapBelow1}" Text="{Binding Label}" />
+        <TextBox x:Name="PromptInput"
+                 Text="{Binding Value}"
+                 AutomationProperties.LabeledBy="{Binding #PromptLabel}" />
+        <TextBlock Classes="error small"
+                   Margin="{DynamicResource GapAbove2}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding HasError}"
+                   Text="{Binding Error}"
+                   AutomationProperties.LiveSetting="Assertive" />
+        <ItemsControl ItemsSource="{Binding Suggestions}" IsVisible="{Binding HasSuggestions}" Margin="{DynamicResource GapAbove2}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <Button Classes="ghost"
+                      Command="{Binding $parent[ItemsControl].((dialogs:PromptDialogViewModel)DataContext).UseSuggestionCommand}"
+                      CommandParameter="{Binding}"
+                      Content="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{DynamicResource GapAbove4}">
+          <Button Margin="{DynamicResource GapRight2}"
+                  Command="{Binding CancelCommand}"
+                  Content="{x:Static res:Strings.Action_Cancel}" />
+          <Button Classes="primary"
+                  Command="{Binding ConfirmCommand}"
+                  Content="{Binding ConfirmText}" />
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="dialogs:TrashDialogViewModel">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="{DynamicResource GapAbove4}">
+          <Button Classes="danger"
+                  Margin="{DynamicResource GapRight2}"
+                  Command="{Binding EmptyAllCommand}"
+                  Content="{x:Static res:Strings.Dialog_Trash_EmptyAll}" />
+          <Button x:Name="CloseButton"
+                  Command="{Binding CancelCommand}"
+                  Content="{x:Static res:Strings.Action_Close}" />
+        </StackPanel>
+        <Panel>
+          <TextBlock Classes="secondary"
+                     HorizontalAlignment="Center"
+                     Margin="{DynamicResource Inset4}"
+                     IsVisible="{Binding IsEmpty}"
+                     Text="{x:Static res:Strings.Dialog_Trash_Empty}" />
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding !IsEmpty}">
+            <ItemsControl ItemsSource="{Binding Items}" AutomationProperties.Name="{x:Static res:Strings.A11y_TrashList}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="dialogs:TrashItemViewModel">
+                  <Grid ColumnDefinitions="*,Auto,Auto" Margin="{DynamicResource GapBelow2}">
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="secondary small" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="secondary small" Text="{Binding DeletedAt}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Margin="{DynamicResource GapRight2}"
+                            Command="{Binding $parent[ItemsControl].((dialogs:TrashDialogViewModel)DataContext).RestoreCommand}"
+                            CommandParameter="{Binding}"
+                            Content="{x:Static res:Strings.Action_Restore}" />
+                    <Button Grid.Column="2"
+                            Classes="ghost"
+                            Command="{Binding $parent[ItemsControl].((dialogs:TrashDialogViewModel)DataContext).DeleteForeverCommand}"
+                            CommandParameter="{Binding}"
+                            Content="{x:Static res:Strings.Dialog_Trash_DeleteForever}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Panel>
+      </DockPanel>
+    </DataTemplate>
+
+  </UserControl.DataTemplates>
+
+  <Panel>
+    <Border Classes="scrim" />
+
+    <Border x:Name="Card"
+            Classes="card"
+            Width="{DynamicResource DialogWidth}"
+            MaxHeight="{DynamicResource OverlayMaxHeight}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Padding="{DynamicResource Inset6}"
+            KeyboardNavigation.TabNavigation="Cycle"
+            KeyDown="OnCardKeyDown"
+            AutomationProperties.Name="{x:Static res:Strings.A11y_Dialog}">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top"
+                   Classes="title"
+                   Margin="{DynamicResource GapBelow3}"
+                   Text="{Binding Current.Title, FallbackValue=''}" />
+        <ContentControl x:Name="DialogContent" Content="{Binding Current}" />
+      </DockPanel>
+    </Border>
+  </Panel>
+</UserControl>
