@@ -57,6 +57,12 @@ public interface INoteService
 
     Task<OpenedNote> CreateAsync(NewNoteRequest request, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Writes <paramref name="text"/> as a new note next to <paramref name="source"/> with its own id.
+    /// Used to keep the user's version when a conflict is resolved in favour of the file on disk.
+    /// </summary>
+    Task<OpenedNote> CreateCopyAsync(NotePath source, string text, CancellationToken cancellationToken);
+
     /// <summary>Changes the title of a note and renames its file to match. Returns the new path.</summary>
     Task<NotePath> RenameAsync(NotePath path, string newTitle, CancellationToken cancellationToken);
 
@@ -130,14 +136,31 @@ public sealed partial class NoteService : INoteService
             }
         }
 
-        if (disk is not null && disk.Hash == ContentHash.Compute(text))
+        if (disk is not null && string.Equals(disk.Text, text, StringComparison.Ordinal))
         {
             // Nothing changed: do not touch the file nor bump its `updated` date.
             return new SaveResult.Saved(ToOpenedNote(disk));
         }
 
-        var stamped = NoteStamper.Stamp(text, path.FileNameWithoutExtension, _idGenerator, Today);
-        var written = await _files.WriteAsync(path, stamped.Text, NoteWriteMode.Overwrite, cancellationToken).ConfigureAwait(false);
+        var fallbackTitle = path.FileNameWithoutExtension;
+        var stamped = NoteStamper.Stamp(text, fallbackTitle, IdGeneratorFor(disk, fallbackTitle), Today);
+
+        // The note goes back in the encoding it was read in. With conflict detection the store checks
+        // once more, right before replacing the file, that it still is the version that was compared.
+        var options = new NoteWriteOptions(
+            disk?.Encoding ?? NoteTextEncoding.Utf8,
+            mode == SaveMode.DetectConflicts ? disk?.Info : null);
+        NoteFile written;
+        try
+        {
+            written = await _files.WriteAsync(path, stamped.Text, NoteWriteMode.Overwrite, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (NoteChangedOnDiskException)
+        {
+            // Another program saved the note while this save was being written: nothing was replaced.
+            var current = await _files.ReadAsync(path, cancellationToken).ConfigureAwait(false);
+            return new SaveResult.Conflict(current is null ? SaveConflictKind.DeletedOnDisk : SaveConflictKind.ModifiedOnDisk, current);
+        }
 
         await IndexAfterWriteAsync(written, cancellationToken).ConfigureAwait(false);
         _events.PublishNotesChanged(NotesChangeSource.Local, path);
@@ -170,6 +193,31 @@ public sealed partial class NoteService : INoteService
         throw new IOException($"Could not find a free file name for '{slug}' after {MaxNameAttempts} attempts.");
     }
 
+    public async Task<OpenedNote> CreateCopyAsync(NotePath source, string text, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        // A copy must not share the id of the original, or the two notes would fight for one identity.
+        var content = NoteStamper.AssignNewId(text, source.FileNameWithoutExtension, _idGenerator, Today).Text;
+        for (var attempt = 1; attempt <= MaxNameAttempts; attempt++)
+        {
+            var path = source.WithFileName(Numbered(source.FileNameWithoutExtension + "-copy", attempt));
+            try
+            {
+                var written = await _files.WriteAsync(path, content, NoteWriteMode.CreateNew, cancellationToken).ConfigureAwait(false);
+                await IndexAfterWriteAsync(written, cancellationToken).ConfigureAwait(false);
+                _events.PublishNotesChanged(NotesChangeSource.Local, path);
+                return ToOpenedNote(written);
+            }
+            catch (NoteAlreadyExistsException)
+            {
+                // Try the next suffix.
+            }
+        }
+
+        throw new IOException($"Could not find a free file name for a copy of '{source}' after {MaxNameAttempts} attempts.");
+    }
+
     public async Task<NotePath> RenameAsync(NotePath path, string newTitle, CancellationToken cancellationToken)
     {
         var title = RequireTitle(newTitle, nameof(newTitle));
@@ -180,7 +228,9 @@ public sealed partial class NoteService : INoteService
         var stamped = NoteStamper.Stamp(retitled.Text, fallbackTitle, _idGenerator, Today);
         if (!string.Equals(stamped.Text, file.Text, StringComparison.Ordinal))
         {
-            await _files.WriteAsync(path, stamped.Text, NoteWriteMode.Overwrite, cancellationToken).ConfigureAwait(false);
+            // Same guarantees as a save: keep the encoding and never replace a version that was not read.
+            var options = new NoteWriteOptions(file.Encoding, file.Info);
+            await _files.WriteAsync(path, stamped.Text, NoteWriteMode.Overwrite, options, cancellationToken).ConfigureAwait(false);
         }
 
         var slug = Slug.From(title);
@@ -233,6 +283,16 @@ public sealed partial class NoteService : INoteService
 
     public Task<IReadOnlyList<string>> ListFoldersAsync(CancellationToken cancellationToken) =>
         _files.ListFoldersAsync(cancellationToken);
+
+    /// <summary>
+    /// A note keeps its identity: when the text being saved has lost its <c>id</c> (an undo past the
+    /// moment it was stamped, a line deleted by mistake) the id still on disk is written again instead
+    /// of minting a new one, which would orphan every reference to the note.
+    /// </summary>
+    private INoteIdGenerator IdGeneratorFor(NoteFile? disk, string fallbackTitle) =>
+        disk is not null && NoteDocumentParser.Parse(disk.Text, fallbackTitle).Metadata.Id is { } existing
+            ? new FixedNoteIdGenerator(existing)
+            : _idGenerator;
 
     private static OpenedNote ToOpenedNote(NoteFile file) =>
         new(file.Info.Path, file.Text, file.Hash, NoteDocumentParser.Parse(file.Text, file.Info.Path.FileNameWithoutExtension));

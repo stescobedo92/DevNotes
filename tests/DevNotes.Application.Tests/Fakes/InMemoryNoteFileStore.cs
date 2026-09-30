@@ -23,10 +23,10 @@ public sealed class InMemoryNoteFileStore : INoteFileStore
     private int _writeCount;
 
     /// <summary>Simulates a change made by another program (new content and modification time).</summary>
-    public NoteFileInfo SetExternal(string path, string text)
+    public NoteFileInfo SetExternal(string path, string text, NoteTextEncoding encoding = NoteTextEncoding.Utf8)
     {
         var notePath = NotePath.Create(path);
-        var entry = new Entry(text, NextTimestamp());
+        var entry = new Entry(text, NextTimestamp(), encoding);
         _files[notePath] = entry;
         return entry.ToInfo(notePath);
     }
@@ -41,6 +41,8 @@ public sealed class InMemoryNoteFileStore : INoteFileStore
     public void DeleteExternal(string path) => _files.TryRemove(NotePath.Create(path), out _);
 
     public void MakeUnreadable(string path) => _unreadable[NotePath.Create(path)] = 0;
+
+    public void MakeReadable(string path) => _unreadable.TryRemove(NotePath.Create(path), out _);
 
     public string? TextOf(string path) => _files.TryGetValue(NotePath.Create(path), out var entry) ? entry.Text : null;
 
@@ -80,14 +82,27 @@ public sealed class InMemoryNoteFileStore : INoteFileStore
         }
 
         return Task.FromResult(_files.TryGetValue(path, out var entry)
-            ? new NoteFile(entry.ToInfo(path), entry.Text, ContentHash.Compute(entry.Text))
+            ? new NoteFile(entry.ToInfo(path), entry.Text, ContentHash.Compute(entry.Text), entry.Encoding)
             : null);
     }
 
-    public Task<NoteFile> WriteAsync(NotePath path, string text, NoteWriteMode mode, CancellationToken cancellationToken)
+    /// <summary>Runs right before a write is applied: lets a test simulate another program saving in that instant.</summary>
+    public Action<NotePath>? BeforeWrite { get; set; }
+
+    public NoteWriteOptions LastWriteOptions { get; private set; }
+
+    public Task<NoteFile> WriteAsync(NotePath path, string text, NoteWriteMode mode, NoteWriteOptions options, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var entry = new Entry(text, NextTimestamp());
+        LastWriteOptions = options;
+        BeforeWrite?.Invoke(path);
+        if (options.ExpectedOnDisk is { } expected
+            && (!_files.TryGetValue(path, out var current) || current.ToInfo(path) != expected))
+        {
+            throw new NoteChangedOnDiskException(path);
+        }
+
+        var entry = new Entry(text, NextTimestamp(), options.Encoding);
         if (mode == NoteWriteMode.CreateNew)
         {
             if (!_files.TryAdd(path, entry))
@@ -101,7 +116,7 @@ public sealed class InMemoryNoteFileStore : INoteFileStore
         }
 
         Interlocked.Increment(ref _writeCount);
-        return Task.FromResult(new NoteFile(entry.ToInfo(path), text, ContentHash.Compute(text)));
+        return Task.FromResult(new NoteFile(entry.ToInfo(path), text, ContentHash.Compute(text), options.Encoding));
     }
 
     public Task MoveAsync(NotePath source, NotePath destination, CancellationToken cancellationToken)
@@ -175,7 +190,7 @@ public sealed class InMemoryNoteFileStore : INoteFileStore
     private DateTimeOffset NextTimestamp() =>
         new(Interlocked.Add(ref _clock, TimeSpan.TicksPerSecond), TimeSpan.Zero);
 
-    private sealed record Entry(string Text, DateTimeOffset LastWrite)
+    private sealed record Entry(string Text, DateTimeOffset LastWrite, NoteTextEncoding Encoding = NoteTextEncoding.Utf8)
     {
         public NoteFileInfo ToInfo(NotePath path) => new(path, System.Text.Encoding.UTF8.GetByteCount(Text), LastWrite);
     }

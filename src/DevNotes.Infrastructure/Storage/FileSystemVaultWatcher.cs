@@ -14,6 +14,8 @@ public sealed partial class FileSystemVaultWatcher : IVaultWatcher
     private const int BufferSizeBytes = 64 * 1024;
 
     private readonly string _root;
+    private readonly string _rootPrefix;
+    private readonly Lock _restartGate = new();
     private readonly FileSystemWatcher _watcher;
     private readonly ILogger _logger;
     private int _disposed;
@@ -23,6 +25,9 @@ public sealed partial class FileSystemVaultWatcher : IVaultWatcher
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
+
+        // A drive or file-system root ("D:\", "/") keeps its separator after trimming.
+        _rootPrefix = Path.EndsInDirectorySeparator(_root) ? _root : _root + Path.DirectorySeparatorChar;
 
         _watcher = new FileSystemWatcher(_root)
         {
@@ -95,10 +100,44 @@ public sealed partial class FileSystemVaultWatcher : IVaultWatcher
         }
     }
 
-    private void OnError(object sender, ErrorEventArgs e)
+    private void OnError(object sender, ErrorEventArgs e) => HandleError(e.GetException());
+
+    /// <summary>
+    /// Any watcher error means changes may have been missed, so a full scan is requested. After an
+    /// error other than a buffer overflow the underlying watcher has stopped (for example the folder
+    /// was briefly unavailable): it is started again so live updates do not end for the session.
+    /// </summary>
+    internal void HandleError(Exception exception)
     {
-        LogWatcherError(e.GetException(), _root);
+        LogWatcherError(exception, _root);
+        if (exception is not InternalBufferOverflowException)
+        {
+            TryRestart();
+        }
+
         Publish(new VaultFileEvent(VaultFileEventKind.Overflow, string.Empty));
+    }
+
+    private void TryRestart()
+    {
+        lock (_restartGate)
+        {
+            if (_disposed != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.EnableRaisingEvents = true;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or ObjectDisposedException or PlatformNotSupportedException)
+            {
+                // The folder is still unavailable. Scans keep the index right; live updates resume with the next session.
+                LogWatcherNotRestarted(exception, _root);
+            }
+        }
     }
 
     private void Raise(VaultFileEventKind kind, string fullPath)
@@ -117,14 +156,14 @@ public sealed partial class FileSystemVaultWatcher : IVaultWatcher
         }
     }
 
-    private string? ToRelative(string fullPath)
+    internal string? ToRelative(string fullPath)
     {
-        if (fullPath.Length <= _root.Length + 1 || !fullPath.StartsWith(_root, StringComparison.OrdinalIgnoreCase))
+        if (fullPath.Length <= _rootPrefix.Length || !fullPath.StartsWith(_rootPrefix, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        return fullPath[(_root.Length + 1)..].Replace('\\', '/');
+        return fullPath[_rootPrefix.Length..].Replace('\\', '/');
     }
 
     /// <summary>Hidden files and tool folders (.git, .obsidian, .devnotes, temporary files) are filtered at the source.</summary>
@@ -133,6 +172,9 @@ public sealed partial class FileSystemVaultWatcher : IVaultWatcher
 
     [LoggerMessage(EventId = 400, Level = LogLevel.Warning, Message = "File watcher for '{Root}' reported an error; a full scan will be requested")]
     private partial void LogWatcherError(Exception exception, string root);
+
+    [LoggerMessage(EventId = 401, Level = LogLevel.Warning, Message = "File watcher for '{Root}' could not be restarted; external changes are picked up by scans only")]
+    private partial void LogWatcherNotRestarted(Exception exception, string root);
 }
 
 public sealed class FileSystemVaultWatcherFactory(ILoggerFactory loggerFactory) : IVaultWatcherFactory

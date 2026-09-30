@@ -186,6 +186,97 @@ public sealed class NoteServiceTests
     }
 
     [Fact]
+    public async Task SaveAsync_WritesInTheEncodingOfTheFile_AndNamesTheVersionItCompared()
+    {
+        var original = NoteText.Simple("A", "Title", "v1");
+        var info = _files.SetExternal("a.md", original, NoteTextEncoding.Legacy);
+
+        await _service.SaveAsync(info.Path, NoteText.Simple("A", "Title", "v2"), ContentHash.Compute(original), SaveMode.DetectConflicts, Ct);
+
+        _files.LastWriteOptions.Should().Be(new NoteWriteOptions(NoteTextEncoding.Legacy, info));
+    }
+
+    [Fact]
+    public async Task SaveAsync_OverwriteMode_KeepsTheEncodingButDoesNotRequireAVersion()
+    {
+        var info = _files.SetExternal("a.md", NoteText.Simple("A", "Title", "theirs"), NoteTextEncoding.Utf16LittleEndian);
+
+        await _service.SaveAsync(info.Path, NoteText.Simple("A", "Title", "mine"), default, SaveMode.Overwrite, Ct);
+
+        _files.LastWriteOptions.Should().Be(new NoteWriteOptions(NoteTextEncoding.Utf16LittleEndian, ExpectedOnDisk: null));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SaveAsync_FileChangedBetweenTheCheckAndTheWrite_IsAConflict_NotAnOverwrite(bool deleted)
+    {
+        var original = NoteText.Simple("A", "Title", "v1");
+        var info = _files.SetExternal("a.md", original);
+        var external = NoteText.Simple("A", "Title", "saved by VS Code in that very instant");
+        _files.BeforeWrite = _ =>
+        {
+            _files.BeforeWrite = null;
+            if (deleted)
+            {
+                _files.DeleteExternal("a.md");
+            }
+            else
+            {
+                _files.SetExternal("a.md", external);
+            }
+        };
+
+        var result = await _service.SaveAsync(info.Path, NoteText.Simple("A", "Title", "my edit"), ContentHash.Compute(original), SaveMode.DetectConflicts, Ct);
+
+        var conflict = result.Should().BeOfType<SaveResult.Conflict>().Subject;
+        conflict.Kind.Should().Be(deleted ? SaveConflictKind.DeletedOnDisk : SaveConflictKind.ModifiedOnDisk);
+        conflict.Disk?.Text.Should().Be(external);
+        _files.TextOf("a.md").Should().Be(deleted ? null : external, "the other program's version must survive");
+        _changes.Should().BeEmpty("nothing was written");
+    }
+
+    [Fact]
+    public async Task SaveAsync_TextThatLostItsId_KeepsTheIdentityOfTheNoteOnDisk()
+    {
+        // Typical cause: the user undoes past the moment the id was stamped into the frontmatter.
+        var original = NoteText.WithFrontmatter("id: 01ORIGINAL\ntitle: T", "Body\n");
+        var info = _files.SetExternal("a.md", original);
+        const string withoutId = "---\ntitle: T\n---\n\nBody edited\n";
+
+        var result = await _service.SaveAsync(info.Path, withoutId, ContentHash.Compute(original), SaveMode.DetectConflicts, Ct);
+
+        var saved = result.Should().BeOfType<SaveResult.Saved>().Subject.Note;
+        saved.Document.Metadata.Id.Should().Be(NoteId.Parse("01ORIGINAL"));
+        saved.Text.Should().Contain("id: 01ORIGINAL").And.NotContain("01TEST", "a new id would orphan every reference to the note");
+        _index.Find("a.md")!.Id.Value.Should().Be("01ORIGINAL");
+    }
+
+    [Fact]
+    public async Task SaveAsync_IdenticalText_DoesNotTouchTheFile_WhateverItsEncoding()
+    {
+        var text = NoteText.Simple("A", "Título", "canción");
+        var info = _files.SetExternal("a.md", text, NoteTextEncoding.Legacy);
+        var writesBefore = _files.WriteCount;
+
+        var result = await _service.SaveAsync(info.Path, text, ContentHash.Compute(text), SaveMode.DetectConflicts, Ct);
+
+        result.Should().BeOfType<SaveResult.Saved>();
+        _files.WriteCount.Should().Be(writesBefore);
+        _changes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RenameAsync_KeepsTheEncoding_AndOnlyReplacesTheVersionItRead()
+    {
+        var info = _files.SetExternal("old.md", NoteText.Simple("A", "Old title"), NoteTextEncoding.Utf8WithBom);
+
+        await _service.RenameAsync(info.Path, "New title", Ct);
+
+        _files.LastWriteOptions.Should().Be(new NoteWriteOptions(NoteTextEncoding.Utf8WithBom, info));
+    }
+
+    [Fact]
     public async Task SaveAsync_NoteWithoutFrontmatter_GetsAnIdOnFirstSave()
     {
         var info = _files.SetExternal("plain.md", "# Plain\n");
@@ -215,6 +306,34 @@ public sealed class NoteServiceTests
         status!.State.Should().Be(IndexState.Failed);
         status.Error.Should().Be("index is broken");
         _events.Status.Should().BeSameAs(status);
+    }
+
+    [Fact]
+    public async Task CreateCopyAsync_WritesTheTextNextToTheSource_WithItsOwnId()
+    {
+        var original = NoteText.WithFrontmatter("id: ORIGINAL\ntitle: Nota\ncustom: keep", "Mi versión\n");
+        _files.SetExternal("bugs/nota.md", original);
+        _files.SetExternal("bugs/nota-copy.md", "an earlier copy");
+
+        var copy = await _service.CreateCopyAsync(NotePath.Create("bugs/nota.md"), original, Ct);
+
+        copy.Path.Value.Should().Be("bugs/nota-copy-2.md", "an existing copy is never overwritten");
+        copy.Text.Should().Contain("Mi versión").And.Contain("custom: keep").And.Contain("id: 01TEST00000000000000000001").And.NotContain("ORIGINAL");
+        copy.Document.Metadata.Updated.Should().Be(new DateOnly(2026, 9, 30));
+        _files.TextOf("bugs/nota.md").Should().Be(original, "the source is left untouched");
+        _index.Find("bugs/nota-copy-2.md")!.Id.Value.Should().Be("01TEST00000000000000000001");
+        _changes.Should().ContainSingle().Which.Paths.Should().Equal(copy.Path);
+    }
+
+    [Fact]
+    public async Task CreateCopyAsync_TextWithoutOrWithBrokenFrontmatter_IsStillSaved()
+    {
+        var plain = await _service.CreateCopyAsync(NotePath.Create("a.md"), "# Solo texto\n", Ct);
+        var broken = await _service.CreateCopyAsync(NotePath.Create("b.md"), "---\ntitle: [oops\n---\ntexto\n", Ct);
+
+        plain.Text.Should().StartWith("---\nid: 01TEST00000000000000000001\n").And.EndWith("# Solo texto\n");
+        broken.Text.Should().Be("---\ntitle: [oops\n---\ntexto\n", "a block that cannot be parsed is never rewritten");
+        broken.Path.Value.Should().Be("b-copy.md");
     }
 
     [Fact]

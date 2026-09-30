@@ -46,6 +46,40 @@ public sealed class TempDirectory : IDisposable
     }
 }
 
+public static class TestLinks
+{
+    /// <summary>
+    /// Creates a directory link: a symbolic link where allowed, otherwise (Windows without the
+    /// privilege) a junction, which needs none. Returns false when neither can be created.
+    /// </summary>
+    public static bool TryCreateDirectoryLink(string link, string target)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+        }
+
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe")
+        {
+            ArgumentList = { "/c", "mklink", "/J", link, target },
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        });
+        process?.WaitForExit(10_000);
+        return process is { HasExited: true, ExitCode: 0 } && Directory.Exists(link);
+    }
+}
+
 public static class TestNotes
 {
     private static readonly DateTimeOffset _baseTime = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);

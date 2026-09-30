@@ -116,6 +116,53 @@ public sealed class FileSystemVaultWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task ErrorOtherThanOverflow_RequestsAScan_AndKeepsWatching()
+    {
+        _watcher.Start();
+
+        // What the operating system reports when the folder was briefly unavailable: the underlying
+        // watcher stops after it, so without a restart live updates would end for the whole session.
+        _watcher.HandleError(new IOException("The network name is no longer available."));
+
+        _events.Should().ContainSingle(e => e.Kind == VaultFileEventKind.Overflow, "changes may have been missed");
+        _vault.Write("after-error.md", "x");
+        await WaitForAsync(e => e.RelativePath == "after-error.md");
+    }
+
+    [Fact]
+    public void BufferOverflow_RequestsAScan()
+    {
+        _watcher.Start();
+
+        _watcher.HandleError(new InternalBufferOverflowException());
+
+        _events.Should().ContainSingle().Which.Kind.Should().Be(VaultFileEventKind.Overflow);
+    }
+
+    [Fact]
+    public void ErrorAfterDispose_IsIgnored()
+    {
+        _watcher.Start();
+        _watcher.Dispose();
+
+        FluentActions.Invoking(() => _watcher.HandleError(new IOException("late"))).Should().NotThrow();
+        _events.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ToRelative_UnderstandsVaultsAtTheRootOfADrive()
+    {
+        var root = Path.GetPathRoot(_vault.Path)!;
+        using var atRoot = new FileSystemVaultWatcher(root, NullLogger<FileSystemVaultWatcher>.Instance);
+
+        atRoot.ToRelative(Path.Combine(root, "ab.md")).Should().Be("ab.md");
+        atRoot.ToRelative(Path.Combine(root, "bugs", "x.md")).Should().Be("bugs/x.md");
+        atRoot.ToRelative(root).Should().BeNull();
+        _watcher.ToRelative(Path.Combine(_vault.Path, "bugs", "x.md")).Should().Be("bugs/x.md");
+        _watcher.ToRelative(_vault.Path + "-sibling" + Path.DirectorySeparatorChar + "x.md").Should().BeNull("a sibling folder is not inside the vault");
+    }
+
+    [Fact]
     public void Constructor_MissingFolder_Throws()
     {
         var act = () => new FileSystemVaultWatcher(_vault.Combine("missing"), NullLogger<FileSystemVaultWatcher>.Instance);

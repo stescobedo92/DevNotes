@@ -116,13 +116,59 @@ public sealed class VaultFileStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadAsync_InvalidUtf8_DoesNotThrow()
+    public async Task NotUnicode_IsReadWithoutLosingBytes_AndSavedBackInTheSameEncoding()
     {
-        await File.WriteAllBytesAsync(_vault.Combine("binary.md"), [0x23, 0x20, 0xFF, 0xFE, 0x41], Ct);
+        // "canción € “q”" as Windows PowerShell's Set-Content or an old editor writes it (Windows-1252).
+        byte[] original = [0x63, 0x61, 0x6E, 0x63, 0x69, 0xF3, 0x6E, 0x20, 0x80, 0x20, 0x93, 0x71, 0x94, 0x0A];
+        var fullPath = _vault.Combine("legacy.md");
+        await File.WriteAllBytesAsync(fullPath, original, Ct);
+        var path = NotePath.Create("legacy.md");
 
-        var file = await _store.ReadAsync(NotePath.Create("binary.md"), Ct);
+        var file = await _store.ReadAsync(path, Ct);
 
-        file!.Text.Should().StartWith("# ").And.EndWith("A");
+        file!.Text.Should().Be("canción € “q”\n");
+        file.Encoding.Should().Be(NoteTextEncoding.Legacy);
+        file.Hash.Should().Be(ContentHash.Compute(original));
+
+        // An edit that fits the code page keeps every other byte exactly as it was.
+        var saved = await _store.WriteAsync(path, file.Text + "más\n", NoteWriteMode.Overwrite, new NoteWriteOptions(file.Encoding), Ct);
+
+        saved.Encoding.Should().Be(NoteTextEncoding.Legacy);
+        (await File.ReadAllBytesAsync(fullPath, Ct)).Should().Equal([.. original, 0x6D, 0xE1, 0x73, 0x0A]);
+
+        // A character the code page cannot hold turns the note into UTF-8: the text always wins.
+        var converted = await _store.WriteAsync(path, file.Text + "✓\n", NoteWriteMode.Overwrite, new NoteWriteOptions(file.Encoding), Ct);
+
+        converted.Encoding.Should().Be(NoteTextEncoding.Utf8);
+        var reread = await _store.ReadAsync(path, Ct);
+        reread!.Text.Should().Be("canción € “q”\n✓\n");
+        reread.Encoding.Should().Be(NoteTextEncoding.Utf8);
+    }
+
+    [Theory]
+    [InlineData("utf8-bom", NoteTextEncoding.Utf8WithBom)]
+    [InlineData("utf16-le", NoteTextEncoding.Utf16LittleEndian)]
+    [InlineData("utf16-be", NoteTextEncoding.Utf16BigEndian)]
+    public async Task WriteAsync_KeepsTheEncodingTheNoteWasReadIn(string encodingName, NoteTextEncoding expected)
+    {
+        Encoding encoding = encodingName switch
+        {
+            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            "utf16-le" => new UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            _ => new UnicodeEncoding(bigEndian: true, byteOrderMark: true),
+        };
+        var fullPath = _vault.Combine("encoded.md");
+        await File.WriteAllBytesAsync(fullPath, [.. encoding.GetPreamble(), .. encoding.GetBytes("# Título\n")], Ct);
+        var path = NotePath.Create("encoded.md");
+
+        var file = await _store.ReadAsync(path, Ct);
+        var saved = await _store.WriteAsync(path, file!.Text + "línea ✓\n", NoteWriteMode.Overwrite, new NoteWriteOptions(file.Encoding), Ct);
+
+        file.Encoding.Should().Be(expected);
+        saved.Encoding.Should().Be(expected);
+        var bytes = await File.ReadAllBytesAsync(fullPath, Ct);
+        bytes.Should().Equal([.. encoding.GetPreamble(), .. encoding.GetBytes("# Título\nlínea ✓\n")]);
+        saved.Hash.Should().Be(ContentHash.Compute(bytes));
     }
 
     [Fact]
@@ -164,6 +210,57 @@ public sealed class VaultFileStoreTests : IDisposable
         written.Hash.Should().Be(ContentHash.Compute(bytes));
         written.Info.Should().Be(await _store.GetInfoAsync(path, Ct));
         Directory.GetFiles(_vault.Combine("new", "folder")).Should().ContainSingle("no temporary file may be left behind");
+    }
+
+    [Fact]
+    public async Task WriteAsync_LargerThanTheReadLimit_IsRejectedBeforeTouchingTheDisk()
+    {
+        var path = NotePath.Create("huge.md");
+        await _store.WriteAsync(path, "small", NoteWriteMode.CreateNew, Ct);
+
+        var act = () => _store.WriteAsync(path, new string('a', (int)VaultFileStore.MaxNoteSizeBytes + 1), NoteWriteMode.Overwrite, Ct);
+
+        await act.Should().ThrowAsync<InvalidDataException>("a note saved past the limit could never be opened again");
+        (await _store.ReadAsync(path, Ct))!.Text.Should().Be("small");
+        Directory.GetFiles(_vault.Path).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WithExpectedVersion_OnlyReplacesTheVersionThatWasRead()
+    {
+        var path = NotePath.Create("note.md");
+        var fullPath = _vault.Combine("note.md");
+        var read = await _store.WriteAsync(path, "version read by the app", NoteWriteMode.CreateNew, Ct);
+
+        // Another program saves the note after the app compared it and before the app replaces it.
+        await File.WriteAllTextAsync(fullPath, "saved by another editor", Ct);
+        File.SetLastWriteTimeUtc(fullPath, read.Info.LastWriteTimeUtc.UtcDateTime.AddSeconds(3));
+
+        var stale = () => _store.WriteAsync(path, "would clobber it", NoteWriteMode.Overwrite, new NoteWriteOptions(ExpectedOnDisk: read.Info), Ct);
+
+        (await stale.Should().ThrowAsync<NoteChangedOnDiskException>()).Which.Path.Should().Be(path);
+        (await File.ReadAllTextAsync(fullPath, Ct)).Should().Be("saved by another editor");
+        Directory.GetFiles(_vault.Path).Should().ContainSingle("the abandoned write leaves no temporary file");
+
+        var current = await _store.ReadAsync(path, Ct);
+        await _store.WriteAsync(path, "merged", NoteWriteMode.Overwrite, new NoteWriteOptions(ExpectedOnDisk: current!.Info), Ct);
+        (await File.ReadAllTextAsync(fullPath, Ct)).Should().Be("merged");
+
+        File.Delete(fullPath);
+        var deleted = () => _store.WriteAsync(path, "x", NoteWriteMode.Overwrite, new NoteWriteOptions(ExpectedOnDisk: current.Info), Ct);
+        await deleted.Should().ThrowAsync<NoteChangedOnDiskException>("a file that disappeared is not the version that was read either");
+        File.Exists(fullPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DriveRootVault_ResolvesNotesInsideIt()
+    {
+        // Only reads of a name that cannot exist: nothing is ever written to the root of the drive.
+        var store = new VaultFileStore(Path.GetPathRoot(_vault.Path)!, _time);
+        var missing = NotePath.Create($"devnotes-no-such-note-{Guid.NewGuid():N}.md");
+
+        (await store.GetInfoAsync(missing, Ct)).Should().BeNull();
+        (await store.ReadAsync(missing, Ct)).Should().BeNull("a note directly under the root is inside the vault");
     }
 
     [Fact]
@@ -375,6 +472,56 @@ public sealed class VaultFileStoreTests : IDisposable
     }
 
     [Theory]
+    [InlineData(".devnotes")]
+    [InlineData(".devnotes/trash")]
+    public async Task Trash_ThatIsALinkToAnotherFolder_IsNeverUsed(string linkedFolder)
+    {
+        // A vault cloned from a repository could ship its trash as a link to any folder of the machine.
+        using var outside = new TempDirectory("devnotes-outside-");
+        outside.Write("trash/precious/keep.md", "must survive");
+        outside.Write("precious/keep.md", "must survive");
+        var link = _vault.Combine(linkedFolder.Split('/'));
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        if (!TestLinks.TryCreateDirectoryLink(link, linkedFolder == ".devnotes" ? outside.Path : outside.Combine("trash")))
+        {
+            Assert.Skip("Directory links cannot be created on this machine.");
+        }
+
+        var path = NotePath.Create("note.md");
+        await _store.WriteAsync(path, "still here", NoteWriteMode.CreateNew, Ct);
+
+        await FluentActions.Invoking(() => _store.EmptyTrashAsync(Ct)).Should().ThrowAsync<UnauthorizedAccessException>();
+        await FluentActions.Invoking(() => _store.ListTrashAsync(Ct)).Should().ThrowAsync<UnauthorizedAccessException>();
+        await FluentActions.Invoking(() => _store.MoveToTrashAsync(path, Ct)).Should().ThrowAsync<UnauthorizedAccessException>();
+        await FluentActions.Invoking(() => _store.DeleteFromTrashAsync("precious", Ct)).Should().ThrowAsync<UnauthorizedAccessException>();
+        await FluentActions.Invoking(() => _store.RestoreFromTrashAsync("precious", Ct)).Should().ThrowAsync<UnauthorizedAccessException>();
+
+        File.ReadAllText(outside.Combine("trash", "precious", "keep.md")).Should().Be("must survive");
+        File.ReadAllText(outside.Combine("precious", "keep.md")).Should().Be("must survive");
+        Directory.GetFiles(outside.Path, "*", SearchOption.AllDirectories).Should().HaveCount(2, "nothing may be written through the link");
+        (await _store.ReadAsync(path, Ct))!.Text.Should().Be("still here");
+    }
+
+    [Fact]
+    public async Task Trash_EntryThatIsALink_IsUnlinkedNotFollowed()
+    {
+        using var outside = new TempDirectory("devnotes-outside-");
+        outside.Write("keep.md", "must survive");
+        await _store.WriteAsync(NotePath.Create("a.md"), "a", NoteWriteMode.CreateNew, Ct);
+        await _store.MoveToTrashAsync(NotePath.Create("a.md"), Ct);
+        if (!TestLinks.TryCreateDirectoryLink(_vault.Combine(".devnotes", "trash", "linked-entry"), outside.Path))
+        {
+            Assert.Skip("Directory links cannot be created on this machine.");
+        }
+
+        (await _store.ListTrashAsync(Ct)).Should().ContainSingle("a linked entry is not a trash entry");
+        await _store.EmptyTrashAsync(Ct);
+
+        Directory.GetFileSystemEntries(_vault.Combine(".devnotes", "trash")).Should().BeEmpty();
+        File.ReadAllText(outside.Combine("keep.md")).Should().Be("must survive");
+    }
+
+    [Theory]
     [InlineData("../../outside")]
     [InlineData("..")]
     [InlineData("a/b")]
@@ -413,15 +560,16 @@ public sealed class VaultFileStoreTests : IDisposable
         await FluentActions.Invoking(() => _store.RestoreFromTrashAsync("forged", Ct)).Should().ThrowAsync<TrashEntryNotFoundException>();
     }
 
-    [Theory]
-    [InlineData(new byte[] { 0x61, 0x62 }, "ab")]
-    [InlineData(new byte[] { 0xEF, 0xBB, 0xBF, 0x61 }, "a")]
-    [InlineData(new byte[] { 0xFF, 0xFE, 0x61, 0x00 }, "a")]
-    [InlineData(new byte[] { 0xFE, 0xFF, 0x00, 0x61 }, "a")]
-    [InlineData(new byte[0], "")]
-    public void Decode_HandlesSupportedEncodings(byte[] bytes, string expected)
+    [Fact]
+    public void TemporaryFiles_AreHiddenAndShort_WhateverTheNameOfTheNote()
     {
-        VaultFileStore.Decode(bytes).Should().Be(expected);
+        var longName = new string('n', 240) + ".md";
+
+        var temporary = Path.GetFileName(AtomicFile.GetTemporaryPath(_vault.Combine(longName)));
+
+        temporary.Should().StartWith(".", "scans and the watcher ignore dot files");
+        temporary.Length.Should().BeLessThan(20, "a note whose name is near the file-system limit must still be saveable");
+        Path.GetFileName(AtomicFile.GetTemporaryPath(_vault.Combine(longName))).Should().NotBe(temporary);
     }
 
     [Fact]

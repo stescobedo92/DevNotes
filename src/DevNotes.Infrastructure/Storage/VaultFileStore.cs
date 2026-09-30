@@ -1,5 +1,4 @@
 using System.IO.Enumeration;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DevNotes.Application.Abstractions;
@@ -23,8 +22,6 @@ public sealed class VaultFileStore : INoteFileStore
     private const string TrashedNoteFileName = "note.md";
     private const string TrashMetadataFileName = "entry.json";
     private const int MaxRestoreAttempts = 100;
-
-    private static readonly UTF8Encoding _utf8NoBom = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
 
     private static readonly StringComparison _pathComparison =
         OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
@@ -52,7 +49,9 @@ public sealed class VaultFileStore : INoteFileStore
 
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
-        _rootPrefix = _root + Path.DirectorySeparatorChar;
+
+        // A drive or file-system root ("D:\", "/") keeps its separator after trimming.
+        _rootPrefix = Path.EndsInDirectorySeparator(_root) ? _root : _root + Path.DirectorySeparatorChar;
         _trashRoot = Path.Combine(_root, InternalFolderName, TrashFolderName);
     }
 
@@ -140,7 +139,7 @@ public sealed class VaultFileStore : INoteFileStore
             },
             cancellationToken);
 
-    public Task<NoteFile> WriteAsync(NotePath path, string text, NoteWriteMode mode, CancellationToken cancellationToken)
+    public Task<NoteFile> WriteAsync(NotePath path, string text, NoteWriteMode mode, NoteWriteOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(text);
         return Task.Run(
@@ -148,20 +147,31 @@ public sealed class VaultFileStore : INoteFileStore
             {
                 var fullPath = Resolve(path);
                 EnsureNotLinkedFile(fullPath, path);
-                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
 
-                var bytes = _utf8NoBom.GetBytes(text);
+                var bytes = NoteTextCodec.Encode(text, options.Encoding, out var encoding);
+                if (bytes.Length > MaxNoteSizeBytes)
+                {
+                    // Reading enforces the same limit: a note written past it could never be opened again.
+                    throw new InvalidDataException(
+                        $"'{path}' would be {bytes.Length:N0} bytes; notes larger than {MaxNoteSizeBytes:N0} bytes are not supported.");
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                Action? verifyUnchanged = options.ExpectedOnDisk is { } expected
+                    ? () => EnsureSameVersion(fullPath, path, expected)
+                    : null;
                 try
                 {
-                    await AtomicFile.WriteAsync(fullPath, bytes, overwrite: mode == NoteWriteMode.Overwrite, cancellationToken).ConfigureAwait(false);
+                    await AtomicFile.WriteAsync(fullPath, bytes, overwrite: mode == NoteWriteMode.Overwrite, verifyUnchanged, cancellationToken)
+                        .ConfigureAwait(false);
                 }
-                catch (IOException) when (mode == NoteWriteMode.CreateNew && File.Exists(fullPath))
+                catch (IOException exception) when (exception is not NoteChangedOnDiskException && mode == NoteWriteMode.CreateNew && File.Exists(fullPath))
                 {
                     throw new NoteAlreadyExistsException(path);
                 }
 
                 var file = new FileInfo(fullPath);
-                return new NoteFile(new NoteFileInfo(path, file.Length, file.LastWriteTimeUtc), text, ContentHash.Compute(bytes));
+                return new NoteFile(new NoteFileInfo(path, file.Length, file.LastWriteTimeUtc), text, ContentHash.Compute(bytes), encoding);
             },
             cancellationToken);
     }
@@ -194,6 +204,8 @@ public sealed class VaultFileStore : INoteFileStore
                     throw new NoteNotFoundException(path);
                 }
 
+                EnsureNotLinkedFile(sourcePath, path);
+
                 var now = _timeProvider.GetUtcNow();
                 var entry = new TrashEntry(NoteId.NewId(now).Value, path, now);
                 var entryDirectory = Path.Combine(_trashRoot, entry.Id);
@@ -225,7 +237,7 @@ public sealed class VaultFileStore : INoteFileStore
             async () =>
             {
                 var entries = new List<TrashEntry>();
-                if (!Directory.Exists(_trashRoot))
+                if (!TrashExists())
                 {
                     return entries;
                 }
@@ -233,7 +245,8 @@ public sealed class VaultFileStore : INoteFileStore
                 foreach (var directory in Directory.EnumerateDirectories(_trashRoot))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (await TryReadTrashEntryAsync(directory, cancellationToken).ConfigureAwait(false) is { } entry)
+                    if (!IsLink(new DirectoryInfo(directory))
+                        && await TryReadTrashEntryAsync(directory, cancellationToken).ConfigureAwait(false) is { } entry)
                     {
                         entries.Add(entry);
                     }
@@ -288,7 +301,7 @@ public sealed class VaultFileStore : INoteFileStore
                     throw new TrashEntryNotFoundException(trashId);
                 }
 
-                Directory.Delete(entryDirectory, recursive: true);
+                DeleteTrashEntry(entryDirectory);
             },
             cancellationToken);
 
@@ -296,7 +309,7 @@ public sealed class VaultFileStore : INoteFileStore
         Task.Run(
             () =>
             {
-                if (!Directory.Exists(_trashRoot))
+                if (!TrashExists())
                 {
                     return;
                 }
@@ -304,31 +317,10 @@ public sealed class VaultFileStore : INoteFileStore
                 foreach (var directory in Directory.EnumerateDirectories(_trashRoot))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    Directory.Delete(directory, recursive: true);
+                    DeleteTrashEntry(directory);
                 }
             },
             cancellationToken);
-
-    /// <summary>Decodes note bytes: UTF-8 by default, UTF-16 when the file starts with its byte-order mark.</summary>
-    internal static string Decode(ReadOnlySpan<byte> bytes)
-    {
-        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
-        {
-            return Encoding.Unicode.GetString(bytes[2..]);
-        }
-
-        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
-        {
-            return Encoding.BigEndianUnicode.GetString(bytes[2..]);
-        }
-
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-        {
-            bytes = bytes[3..];
-        }
-
-        return _utf8NoBom.GetString(bytes);
-    }
 
     private static async Task<NoteFile?> ReadCoreAsync(NotePath path, string fullPath, CancellationToken cancellationToken)
     {
@@ -354,7 +346,8 @@ public sealed class VaultFileStore : INoteFileStore
 
                 // Metadata comes from the same handle as the bytes, so it describes exactly what was read.
                 var info = new NoteFileInfo(path, length, File.GetLastWriteTimeUtc(stream.SafeFileHandle));
-                return new NoteFile(info, Decode(buffer), ContentHash.Compute(buffer));
+                var text = NoteTextCodec.Decode(buffer, out var encoding);
+                return new NoteFile(info, text, ContentHash.Compute(buffer), encoding);
             }
         }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
@@ -423,7 +416,7 @@ public sealed class VaultFileStore : INoteFileStore
     private void EnsureNoLinkInPath(string fullPath, NotePath path)
     {
         var current = Path.GetDirectoryName(fullPath);
-        while (current is not null && current.Length > _root.Length)
+        while (current is not null && current.Length >= _rootPrefix.Length)
         {
             var directory = new DirectoryInfo(current);
             if (directory.Exists && IsLink(directory))
@@ -432,6 +425,22 @@ public sealed class VaultFileStore : INoteFileStore
             }
 
             current = Path.GetDirectoryName(current);
+        }
+    }
+
+    /// <summary>
+    /// Last line of defence of the "never overwrite without warning" rule: between the conflict check
+    /// and this point the new content was written and flushed, which leaves time for another program
+    /// to save the note. Size and modification time are compared again right before the rename.
+    /// </summary>
+    private static void EnsureSameVersion(string fullPath, NotePath path, NoteFileInfo expected)
+    {
+        var file = new FileInfo(fullPath);
+        if (!file.Exists
+            || file.Length != expected.Size
+            || new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero) != expected.LastWriteTimeUtc)
+        {
+            throw new NoteChangedOnDiskException(path);
         }
     }
 
@@ -451,17 +460,62 @@ public sealed class VaultFileStore : INoteFileStore
             throw new TrashEntryNotFoundException(trashId ?? string.Empty);
         }
 
+        EnsureTrashIsNotLinked();
         return Path.Combine(_trashRoot, id.Value);
+    }
+
+    /// <summary>
+    /// The trash is the one place where the app deletes for good, so it must be a real folder of this
+    /// vault. A vault cloned from a repository could ship <c>.devnotes</c> (or its <c>trash</c>) as a
+    /// link to any other folder; emptying the trash would then delete that folder's content.
+    /// </summary>
+    private void EnsureTrashIsNotLinked()
+    {
+        var internalFolder = new DirectoryInfo(Path.Combine(_root, InternalFolderName));
+        if (IsLink(internalFolder) || IsLink(new DirectoryInfo(_trashRoot)))
+        {
+            throw new UnauthorizedAccessException(
+                $"'{InternalFolderName}' in this vault is a link to another folder; the trash is not used through links.");
+        }
+    }
+
+    private bool TrashExists()
+    {
+        EnsureTrashIsNotLinked();
+        return Directory.Exists(_trashRoot);
+    }
+
+    /// <summary>Removes one trash entry. An entry that is itself a link is unlinked, never followed.</summary>
+    private static void DeleteTrashEntry(string entryDirectory)
+    {
+        var directory = new DirectoryInfo(entryDirectory);
+        if (IsLink(directory))
+        {
+            directory.Delete();
+        }
+        else
+        {
+            directory.Delete(recursive: true);
+        }
     }
 
     private void EnsureInternalFolder()
     {
+        EnsureTrashIsNotLinked();
         Directory.CreateDirectory(_trashRoot);
+        EnsureTrashIsNotLinked();
+
         var gitignore = Path.Combine(_root, InternalFolderName, ".gitignore");
-        if (!File.Exists(gitignore))
+        try
         {
-            // Keeps the trash out of the user's Git history when the vault is a repository.
-            File.WriteAllText(gitignore, "*\n", _utf8NoBom);
+            // Keeps the trash out of the user's Git history when the vault is a repository. CreateNew
+            // never writes through an existing entry, be it a file or a (dangling) link.
+            using var stream = new FileStream(gitignore, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            stream.Write("*\n"u8);
+        }
+        catch (IOException) when (File.Exists(gitignore) || new FileInfo(gitignore).LinkTarget is not null)
+        {
+            // Already there.
         }
     }
 
