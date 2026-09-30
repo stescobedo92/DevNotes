@@ -11,6 +11,9 @@ internal static class FileNameRules
         "CON", "PRN", "AUX", "NUL",
         "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
         "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+
+        // Windows also reserves the superscript digits one, two and three.
+        "COM\u00B9", "COM\u00B2", "COM\u00B3", "LPT\u00B9", "LPT\u00B2", "LPT\u00B3",
     };
 
     public static bool IsReservedDeviceName(ReadOnlySpan<char> segment)

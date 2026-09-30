@@ -37,6 +37,8 @@ public sealed class NotePathTests
     [InlineData("con.md")]
     [InlineData("folder/NUL/note.md")]
     [InlineData("lpt1.backup.md")]
+    [InlineData("COM\u00B9.md")] // Windows also reserves the superscript digits
+    [InlineData("notes/lpt\u00B3.md")]
     [InlineData("what?.md")]
     [InlineData("pipe|name.md")]
     [InlineData("trailing /note.md")]
