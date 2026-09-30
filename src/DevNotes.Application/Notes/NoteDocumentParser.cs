@@ -2,6 +2,7 @@ using System.Globalization;
 using DevNotes.Application.Common;
 using DevNotes.Domain.Notes;
 using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
 using YamlDotNet.RepresentationModel;
 
 namespace DevNotes.Application.Notes;
@@ -14,7 +15,12 @@ namespace DevNotes.Application.Notes;
 public static class NoteDocumentParser
 {
     private const int MaxListItems = 256;
-    private const int MaxFlowNesting = 32;
+
+    /// <summary>Collections nested deeper than this are rejected (real frontmatter uses two or three levels).</summary>
+    internal const int MaxNesting = 32;
+
+    /// <summary>Aliases (<c>*name</c>) allowed in one block; frontmatter practically never needs them.</summary>
+    internal const int MaxAliases = 16;
 
     /// <param name="text">Full text of the note file.</param>
     /// <param name="fallbackTitle">Used when neither the frontmatter nor a level-1 heading provides a title.</param>
@@ -23,7 +29,21 @@ public static class NoteDocumentParser
         ArgumentNullException.ThrowIfNull(text);
         ArgumentException.ThrowIfNullOrWhiteSpace(fallbackTitle);
 
-        if (!FrontmatterBlock.TryFind(text, out var block))
+        var scan = FrontmatterBlock.Scan(text, out var block);
+        if (scan is FrontmatterScan.Unterminated or FrontmatterScan.TooLarge)
+        {
+            // Not usable as metadata, and not "no frontmatter" either: nothing may be written above it.
+            return new NoteDocument(
+                new NoteMetadata { Title = ResolveTitle(null, text, fallbackTitle) },
+                text,
+                BodyOffset: 0,
+                FrontmatterStatus.Invalid,
+                scan == FrontmatterScan.Unterminated
+                    ? "The frontmatter block is not closed: add a line with --- after the last key."
+                    : string.Create(CultureInfo.InvariantCulture, $"The frontmatter block is larger than {FrontmatterBlock.MaxYamlLength / 1024} KB."));
+        }
+
+        if (scan == FrontmatterScan.None)
         {
             var start = text.Length > 0 && text[0] == TextConstants.ByteOrderMark ? 1 : 0;
             var plainBody = text[start..];
@@ -47,8 +67,11 @@ public static class NoteDocumentParser
         }
 
         var body = text[block.BodyStart..];
-        var metadata = ReadMetadata(mapping, body, fallbackTitle);
-        return new NoteDocument(metadata, body, block.BodyStart, FrontmatterStatus.Valid, FrontmatterError: null);
+        var metadata = ReadMetadata(mapping, body, fallbackTitle, out var hasForeignId);
+        return new NoteDocument(metadata, body, block.BodyStart, FrontmatterStatus.Valid, FrontmatterError: null)
+        {
+            HasForeignId = hasForeignId,
+        };
     }
 
     /// <summary>Returns the text of the first level-1 ATX heading that is not inside a fenced code block.</summary>
@@ -81,7 +104,7 @@ public static class NoteDocumentParser
 
             if (line.Length > 2 && line[0] == '#' && line[1] is ' ' or '\t')
             {
-                var heading = line[2..].Trim().TrimEnd('#').TrimEnd();
+                var heading = StripClosingSequence(line[2..]);
                 if (NoteTitle.TryNormalize(heading.ToString(), out var title))
                 {
                     return title;
@@ -92,22 +115,42 @@ public static class NoteDocumentParser
         return null;
     }
 
+    /// <summary>
+    /// Removes the optional closing run of <c>#</c> of an ATX heading. As in CommonMark, the run only
+    /// counts when it is preceded by a space: "# Tips for C#" keeps its title, "# Title ##" loses the run.
+    /// </summary>
+    private static ReadOnlySpan<char> StripClosingSequence(ReadOnlySpan<char> heading)
+    {
+        var trimmed = heading.Trim();
+        var end = trimmed.Length;
+        while (end > 0 && trimmed[end - 1] == '#')
+        {
+            end--;
+        }
+
+        if (end == trimmed.Length)
+        {
+            return trimmed;
+        }
+
+        if (end == 0)
+        {
+            return [];
+        }
+
+        return trimmed[end - 1] is ' ' or '\t' ? trimmed[..end].TrimEnd() : trimmed;
+    }
+
     private static bool TryLoadMapping(string yaml, out YamlMappingNode mapping, out string? error)
     {
         mapping = new YamlMappingNode();
         error = null;
-        if (ExceedsFlowNesting(yaml))
-        {
-            // Deeply nested flow collections recurse in the YAML loader; a crafted file must not crash the app.
-            error = "The frontmatter nests collections too deeply.";
-            return false;
-        }
 
         try
         {
             var stream = new YamlStream();
             using var reader = new StringReader(yaml);
-            stream.Load(reader);
+            stream.Load(new BoundedParser(new Parser(reader)));
 
             if (stream.Documents.Count == 0)
             {
@@ -138,29 +181,9 @@ public static class NoteDocumentParser
         }
     }
 
-    private static bool ExceedsFlowNesting(ReadOnlySpan<char> yaml)
+    private static NoteMetadata ReadMetadata(YamlMappingNode mapping, string body, string fallbackTitle, out bool hasForeignId)
     {
-        var depth = 0;
-        foreach (var c in yaml)
-        {
-            if (c is '[' or '{')
-            {
-                if (++depth > MaxFlowNesting)
-                {
-                    return true;
-                }
-            }
-            else if (c is ']' or '}' && depth > 0)
-            {
-                depth--;
-            }
-        }
-
-        return false;
-    }
-
-    private static NoteMetadata ReadMetadata(YamlMappingNode mapping, string body, string fallbackTitle)
-    {
+        hasForeignId = false;
         NoteId? id = null;
         string? title = null;
         string? project = null;
@@ -183,6 +206,11 @@ public static class NoteDocumentParser
                     if (NoteId.TryParse(ReadScalar(value), out var parsedId))
                     {
                         id = parsedId;
+                    }
+                    else if (value is not YamlScalarNode || ReadScalar(value) is not null)
+                    {
+                        // There is a value, only not one the app can use. An empty `id:` is simply "no id yet".
+                        hasForeignId = true;
                     }
 
                     break;
@@ -355,5 +383,49 @@ public static class NoteDocumentParser
         return DateOnly.TryParseExact(text.AsSpan(0, 10), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
             ? date
             : null;
+    }
+
+    /// <summary>
+    /// Guards the YAML loader, which builds its node tree recursively and has no limits of its own:
+    /// a crafted note (thousands of nested "- - - -" sequences fit in a few kilobytes) overflows the
+    /// stack, which cannot be caught and would take the whole app down on every start. Aliases are
+    /// capped as well because a chain of them used as a mapping key is hashed in exponential time.
+    /// </summary>
+    private sealed class BoundedParser(IParser inner) : IParser
+    {
+        private int _depth;
+        private int _aliases;
+
+        public ParsingEvent? Current => inner.Current;
+
+        public bool MoveNext()
+        {
+            if (!inner.MoveNext())
+            {
+                return false;
+            }
+
+            switch (inner.Current)
+            {
+                case SequenceStart or MappingStart when ++_depth > MaxNesting:
+                    throw Rejected(inner.Current, "collections are nested too deeply");
+                case SequenceEnd or MappingEnd:
+                    _depth--;
+                    break;
+                case AnchorAlias when ++_aliases > MaxAliases:
+                    throw Rejected(inner.Current, "too many aliases");
+                default:
+                    break;
+            }
+
+            return true;
+        }
+
+        private static YamlException Rejected(ParsingEvent at, string reason)
+        {
+            var start = at.Start;
+            var end = at.End;
+            return new YamlException(in start, in end, reason);
+        }
     }
 }

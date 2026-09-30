@@ -243,6 +243,54 @@ public sealed class FrontmatterEditingTests
         document.Body.Should().Be("\n# Bug: deadlock #42\n\n");
     }
 
+    [Theory]
+    [InlineData("---\ntitle: Being typed\n")]
+    [InlineData("---\r\ntitle: Being typed\r\ntags: [a, b]\r\n")]
+    public void Stamp_FrontmatterStillBeingTyped_IsLeftExactlyAsItIs(string text)
+    {
+        // Autosave may fire before the user types the closing fence. Prepending a block of our own
+        // would demote theirs to body text for good.
+        var stamped = NoteStamper.Stamp(text, "fallback", new SequentialNoteIdGenerator(), _today);
+        var retitled = NoteStamper.SetTitle(text, "fallback", "Another title");
+
+        stamped.Text.Should().Be(text);
+        retitled.Text.Should().Be(text);
+        stamped.Document.FrontmatterStatus.Should().Be(FrontmatterStatus.Invalid);
+    }
+
+    [Fact]
+    public void Stamp_OversizedFrontmatter_IsLeftExactlyAsItIs()
+    {
+        var text = "---\nnotes: \"" + new string('x', FrontmatterBlock.MaxYamlLength) + "\"\n---\nBody";
+
+        NoteStamper.Stamp(text, "fallback", new SequentialNoteIdGenerator(), _today).Text.Should().Be(text);
+    }
+
+    [Theory]
+    [InlineData("id: \"ADR 0001\"")]
+    [InlineData("id: docs/intro")]
+    [InlineData("id: [a, b]")]
+    public void Stamp_IdWrittenForAnotherTool_IsNeverReplaced(string idLine)
+    {
+        var text = $"---\n{idLine}\ntitle: T\n---\nBody\n";
+
+        var stamped = NoteStamper.Stamp(text, "fallback", new SequentialNoteIdGenerator(), _today);
+
+        stamped.Text.Should().Contain(idLine).And.NotContain("01TEST", "the value belongs to the user; the note is identified by its path instead");
+        stamped.Text.Should().Contain("updated: 2026-09-30");
+        stamped.Document.Metadata.Id.Should().BeNull();
+    }
+
+    [Fact]
+    public void Stamp_NoteStartingWithAHorizontalRule_StillGetsItsFrontmatter()
+    {
+        const string text = "---\n\n# Title after a rule\n";
+
+        var stamped = NoteStamper.Stamp(text, "fallback", new SequentialNoteIdGenerator(), _today);
+
+        stamped.Text.Should().StartWith("---\nid: 01TEST00000000000000000001\n").And.EndWith(text);
+    }
+
     [Fact]
     public void CreateDefault_WithoutProject_OmitsTheKey()
     {
@@ -264,6 +312,28 @@ public sealed class FrontmatterEditingTests
             new OutlineHeading(2, "Two with code and bold", 4),
             new OutlineHeading(1, "Setext", 12),
             new OutlineHeading(6, "Six", 15));
+    }
+
+    [Theory]
+    [InlineData("quotes")]
+    [InlineData("lists")]
+    public void MarkdownOutline_Extract_InputNestedBeyondTheParserLimit_HasNoOutline_InsteadOfFailing(string kind)
+    {
+        var nested = kind == "quotes"
+            ? string.Concat(Enumerable.Repeat(">", 5_000)) + " x\n"
+            : string.Concat(Enumerable.Repeat("- ", 3_000)) + "x\n";
+
+        MarkdownOutline.Extract("# Title\n\n" + nested).Should().BeEmpty("the note must still open; it simply has no table of contents");
+    }
+
+    [Fact]
+    public void MarkdownOutline_Extract_HeadingWithThousandsOfNestedInlines_IsReadWithoutRecursion()
+    {
+        var heading = "# " + string.Concat(Enumerable.Repeat("[", 3_000)) + "deep title\n";
+
+        var outline = MarkdownOutline.Extract(heading);
+
+        outline.Should().ContainSingle().Which.Text.Should().EndWith("deep title");
     }
 
     [Fact]

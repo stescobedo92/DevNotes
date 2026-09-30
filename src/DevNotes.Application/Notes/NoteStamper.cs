@@ -5,6 +5,12 @@ namespace DevNotes.Application.Notes;
 /// <summary>Text to write plus how it parses.</summary>
 public sealed record StampedNote(string Text, NoteDocument Document);
 
+/// <summary>Hands out one known id: used to stamp a note again with the identity it already has.</summary>
+public sealed class FixedNoteIdGenerator(NoteId id) : INoteIdGenerator
+{
+    public NoteId NewId() => id;
+}
+
 /// <summary>
 /// Applies the metadata the app is responsible for right before a note is written:
 /// a stable <c>id</c> (generated when missing) and the <c>updated</c> date.
@@ -23,7 +29,7 @@ public static class NoteStamper
         }
 
         var assignments = new List<FrontmatterAssignment>(2);
-        if (document.Metadata.Id is null)
+        if (document.Metadata.Id is null && !document.HasForeignId)
         {
             assignments.Add(new FrontmatterAssignment("id", YamlScalar.Format(idGenerator.NewId().Value), FrontmatterPlacement.Start));
         }
@@ -34,6 +40,27 @@ public static class NoteStamper
         }
 
         return Apply(text, fallbackTitle, document, assignments);
+    }
+
+    /// <summary>Gives the note a brand-new <c>id</c> (replacing any existing one) and today's <c>updated</c> date.</summary>
+    public static StampedNote AssignNewId(string text, string fallbackTitle, INoteIdGenerator idGenerator, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(idGenerator);
+
+        var document = NoteDocumentParser.Parse(text, fallbackTitle);
+        if (document.FrontmatterStatus == FrontmatterStatus.Invalid)
+        {
+            return new StampedNote(text, document);
+        }
+
+        return Apply(
+            text,
+            fallbackTitle,
+            document,
+            [
+                new FrontmatterAssignment("id", YamlScalar.Format(idGenerator.NewId().Value), FrontmatterPlacement.Start),
+                new FrontmatterAssignment("updated", YamlScalar.FormatDate(today)),
+            ]);
     }
 
     /// <summary>Sets the <c>title</c> key, keeping everything else untouched.</summary>

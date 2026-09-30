@@ -205,19 +205,148 @@ public sealed class NoteDocumentParserTests
 
         var document = NoteDocumentParser.Parse(bomb, "fallback");
 
-        document.Metadata.Title.Should().Be("survived");
-        document.Metadata.Tags.Should().BeEmpty("nested sequences are not tags");
+        document.FrontmatterStatus.Should().Be(FrontmatterStatus.Invalid, "a block with this many aliases is refused, not expanded");
+        document.FrontmatterError.Should().Contain("aliases");
+        document.Metadata.Title.Should().Be("fallback");
+        document.Body.Should().Be(bomb, "the note itself stays readable and searchable");
     }
 
     [Fact]
-    public void Parse_OversizedFrontmatter_IsTreatedAsContent()
+    public void Parse_AFewAliases_AreResolved()
+    {
+        var document = NoteDocumentParser.Parse("---\nproject: &p cslinq\ntitle: *p\ntags: [*p, other]\n---\nBody", "fallback");
+
+        document.FrontmatterStatus.Should().Be(FrontmatterStatus.Valid);
+        document.Metadata.Title.Should().Be("cslinq");
+        document.Metadata.Tags.Select(tag => tag.Value).Should().Equal("cslinq", "other");
+    }
+
+    [Fact]
+    public void Parse_AliasChainUsedAsAKey_IsRefusedInsteadOfHashedForever()
+    {
+        // Each level doubles the work of hashing the key: 40 levels would never finish.
+        var yaml = new System.Text.StringBuilder("---\na0: &a0 [x, x]\n");
+        for (var level = 1; level <= 40; level++)
+        {
+            yaml.Append(System.Globalization.CultureInfo.InvariantCulture, $"a{level}: &a{level} [*a{level - 1}, *a{level - 1}]\n");
+        }
+
+        yaml.Append("? *a40\n: v\n---\nBody");
+
+        var document = NoteDocumentParser.Parse(yaml.ToString(), "fallback");
+
+        document.FrontmatterStatus.Should().Be(FrontmatterStatus.Invalid);
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(5_000)]
+    [InlineData(20_000)]
+    public void Parse_DeeplyNestedBlockSequences_AreRefusedInsteadOfOverflowingTheStack(int depth)
+    {
+        // "- - - - … x": two characters per level, so thousands of levels fit well inside the size limit.
+        // The YAML loader recurses once per level; without a bound this kills the process.
+        var text = "---\ntags:\n  " + string.Concat(Enumerable.Repeat("- ", depth)) + "x\ntitle: never read\n---\nBody";
+
+        var document = NoteDocumentParser.Parse(text, "fallback");
+
+        document.FrontmatterStatus.Should().Be(FrontmatterStatus.Invalid);
+        document.FrontmatterError.Should().Contain("nested too deeply");
+        document.Metadata.Title.Should().Be("fallback");
+    }
+
+    [Fact]
+    public void Parse_NestingWithinTheLimit_IsAccepted()
+    {
+        var nested = string.Concat(Enumerable.Repeat("[", 20)) + "x" + string.Concat(Enumerable.Repeat("]", 20));
+
+        var document = NoteDocumentParser.Parse($"---\ntitle: Deep but fine\nextra: {nested}\n---\nBody", "fallback");
+
+        document.FrontmatterStatus.Should().Be(FrontmatterStatus.Valid);
+        document.Metadata.Title.Should().Be("Deep but fine");
+    }
+
+    [Fact]
+    public void Parse_OversizedFrontmatter_IsInvalid_SoNothingIsEverWrittenAboveIt()
     {
         var text = "---\nnotes: \"" + new string('x', FrontmatterBlock.MaxYamlLength) + "\"\n---\nBody";
 
         var document = NoteDocumentParser.Parse(text, "fallback");
 
+        document.FrontmatterStatus.Should().Be(FrontmatterStatus.Invalid);
+        document.FrontmatterError.Should().Contain("larger than");
+        document.Body.Should().Be(text);
+        document.BodyOffset.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("---\ntitle: Being typed\ntags: [a]\n")]
+    [InlineData("---\r\ntitle: Being typed\r\n")]
+    [InlineData("---\n\n\"title\": x\nmore text")]
+    [InlineData("---\ntitle:\n")]
+    public void Parse_FrontmatterWithoutClosingFence_IsInvalid(string text)
+    {
+        var document = NoteDocumentParser.Parse(text, "fallback");
+
+        document.FrontmatterStatus.Should().Be(FrontmatterStatus.Invalid, "the user is still writing the block");
+        document.FrontmatterError.Should().Contain("not closed");
+        document.Body.Should().Be(text);
+    }
+
+    [Theory]
+    [InlineData("---\n\n# A note that starts with a horizontal rule\n")]
+    [InlineData("---\nJust a sentence: with a colon later on\n")]
+    [InlineData("---\nhttps://example.com/page\n")]
+    [InlineData("---\n")]
+    [InlineData("---")]
+    public void Parse_LeadingHorizontalRule_IsNotFrontmatter(string text)
+    {
+        var document = NoteDocumentParser.Parse(text, "fallback");
+
         document.FrontmatterStatus.Should().Be(FrontmatterStatus.None);
         document.Body.Should().Be(text);
+    }
+
+    [Theory]
+    [InlineData("id: \"ADR 0001\"")]
+    [InlineData("id: docs/intro")]
+    [InlineData("id: [a, b]")]
+    [InlineData("id: {a: b}")]
+    public void Parse_IdTheAppCannotUse_IsReportedAsForeign(string idLine)
+    {
+        var document = NoteDocumentParser.Parse($"---\n{idLine}\ntitle: T\n---\nBody", "fallback");
+
+        document.Metadata.Id.Should().BeNull();
+        document.HasForeignId.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("title: T")]
+    [InlineData("id:\ntitle: T")]
+    [InlineData("id: ~\ntitle: T")]
+    [InlineData("id: 01J8ZQ4M9T3N7K5W2X6Y8V0B1C\ntitle: T")]
+    public void Parse_MissingEmptyOrUsableId_IsNotForeign(string frontmatter)
+    {
+        NoteDocumentParser.Parse($"---\n{frontmatter}\n---\nBody", "fallback").HasForeignId.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("# Migrating to C#", "Migrating to C#")]
+    [InlineData("# F# and C#", "F# and C#")]
+    [InlineData("# Issue #42", "Issue #42")]
+    [InlineData("# Closed heading #", "Closed heading")]
+    [InlineData("# Closed heading ###   ", "Closed heading")]
+    [InlineData("# Tabs\t##", "Tabs")]
+    [InlineData("#   Spaced   ", "Spaced")]
+    public void FindFirstHeading_OnlyStripsARealClosingSequence(string line, string expected)
+    {
+        NoteDocumentParser.FindFirstHeading(line + "\n\ntext").Should().Be(expected);
+    }
+
+    [Fact]
+    public void FindFirstHeading_MadeOnlyOfHashes_IsSkipped()
+    {
+        NoteDocumentParser.FindFirstHeading("# ###\n# Real title\n").Should().Be("Real title");
     }
 
     [Fact]

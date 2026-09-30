@@ -1,4 +1,3 @@
-using System.Text;
 using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -22,7 +21,18 @@ public static class MarkdownOutline
     {
         ArgumentNullException.ThrowIfNull(markdown);
 
-        var document = Markdown.Parse(markdown, _pipeline);
+        MarkdownDocument document;
+        try
+        {
+            document = Markdown.Parse(markdown, _pipeline);
+        }
+        catch (ArgumentException)
+        {
+            // Markdig refuses input nested beyond its depth limit (hundreds of "> > > …"). Such a note
+            // simply has no outline; it must still open.
+            return [];
+        }
+
         var headings = new List<OutlineHeading>();
         var countedUpTo = 0;
         var line = 0;
@@ -58,32 +68,6 @@ public static class MarkdownOutline
             return string.Empty;
         }
 
-        var builder = new StringBuilder();
-        Append(builder, container);
-        return builder.ToString().Trim();
-    }
-
-    private static void Append(StringBuilder builder, ContainerInline container)
-    {
-        foreach (var inline in container)
-        {
-            switch (inline)
-            {
-                case LiteralInline literal:
-                    builder.Append(literal.Content.AsSpan());
-                    break;
-                case CodeInline code:
-                    builder.Append(code.ContentSpan);
-                    break;
-                case LineBreakInline:
-                    builder.Append(' ');
-                    break;
-                case ContainerInline nested:
-                    Append(builder, nested);
-                    break;
-                default:
-                    break;
-            }
-        }
+        return MarkdownText.Of(container).Trim();
     }
 }

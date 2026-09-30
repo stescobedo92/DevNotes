@@ -9,7 +9,10 @@ public enum FrontmatterStatus
 
     Valid,
 
-    /// <summary>A block delimited by <c>---</c> exists but it is not a YAML mapping; it is left untouched.</summary>
+    /// <summary>
+    /// A block delimited by <c>---</c> exists (or was started) but cannot be used: it is not a YAML
+    /// mapping, it is not closed or it is too large. It is left untouched.
+    /// </summary>
     Invalid,
 }
 
@@ -24,4 +27,12 @@ public sealed record NoteDocument(
     string Body,
     int BodyOffset,
     FrontmatterStatus FrontmatterStatus,
-    string? FrontmatterError);
+    string? FrontmatterError)
+{
+    /// <summary>
+    /// True when the frontmatter has an <c>id</c> key whose value the app cannot use as an identifier
+    /// (spaces, slashes, a list…). The value belongs to the user or to another tool, so it is never
+    /// replaced; the note is identified by its path instead.
+    /// </summary>
+    public bool HasForeignId { get; init; }
+}
