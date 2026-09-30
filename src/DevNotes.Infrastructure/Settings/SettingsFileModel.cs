@@ -35,6 +35,10 @@ internal sealed class SettingsFileModel
 
     public LayoutFileModel? Layout { get; set; }
 
+    public List<ProjectFileModel?>? Projects { get; set; }
+
+    public QuickCaptureFileModel? QuickCapture { get; set; }
+
     public static SettingsFileModel From(AppSettings settings) => new()
     {
         SchemaVersion = settings.SchemaVersion,
@@ -48,6 +52,12 @@ internal sealed class SettingsFileModel
         ViewMode = settings.ViewMode,
         SortOrder = settings.SortOrder,
         Layout = LayoutFileModel.From(settings.Layout),
+        Projects = [.. settings.Projects.Select(project => new ProjectFileModel { Name = project.Name, RepositoryPath = project.RepositoryPath })],
+        QuickCapture = new QuickCaptureFileModel
+        {
+            GlobalHotkeyEnabled = settings.QuickCapture.GlobalHotkeyEnabled,
+            Hotkey = settings.QuickCapture.Hotkey,
+        },
     };
 
     public AppSettings ToSettings() => new()
@@ -68,7 +78,32 @@ internal sealed class SettingsFileModel
         ViewMode = ViewMode,
         SortOrder = SortOrder,
         Layout = (Layout ?? new LayoutFileModel()).ToLayout(),
+        Projects =
+        [
+            .. (Projects ?? [])
+                .Where(project => project is { Name: not null })
+                .Select(project => new ProjectSettings(project!.Name!, project.RepositoryPath)),
+        ],
+        QuickCapture = new QuickCaptureSettings
+        {
+            GlobalHotkeyEnabled = QuickCapture?.GlobalHotkeyEnabled ?? true,
+            Hotkey = QuickCapture?.Hotkey ?? HotkeyGesture.DefaultText,
+        },
     };
+}
+
+internal sealed class ProjectFileModel
+{
+    public string? Name { get; set; }
+
+    public string? RepositoryPath { get; set; }
+}
+
+internal sealed class QuickCaptureFileModel
+{
+    public bool GlobalHotkeyEnabled { get; set; } = true;
+
+    public string? Hotkey { get; set; } = HotkeyGesture.DefaultText;
 }
 
 internal sealed class VaultFileModel
