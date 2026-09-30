@@ -1,0 +1,29 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+artifacts/
+publish/
+*.nupkg
+
+# IDE
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.DotSettings.user
+
+# Test / coverage / benchmarks
+TestResults/
+coverage/
+*.coverage
+*.trx
+BenchmarkDotNet.Artifacts/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local tooling
+.claude/
+.remember/
