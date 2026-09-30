@@ -51,7 +51,7 @@ public sealed partial class VaultSession : IVaultSession
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
     private readonly Lock _bufferGate = new();
-    private readonly Dictionary<NotePath, bool> _bufferedChanges = [];
+    private readonly HashSet<NotePath> _bufferedChanges = [];
     private bool _rescanBuffered;
     private int _scanQueued;
     private Task? _worker;
@@ -195,18 +195,18 @@ public sealed partial class VaultSession : IVaultSession
                     break;
                 case VaultFileEventKind.Created:
                 case VaultFileEventKind.Changed:
-                    BufferChange(e.RelativePath, removed: false, structural: e.Kind == VaultFileEventKind.Created);
+                    BufferChange(e.RelativePath, structural: e.Kind == VaultFileEventKind.Created);
                     break;
                 case VaultFileEventKind.Deleted:
-                    BufferChange(e.RelativePath, removed: true, structural: true);
+                    BufferChange(e.RelativePath, structural: true);
                     break;
                 case VaultFileEventKind.Renamed:
                     if (e.OldRelativePath is not null)
                     {
-                        BufferChange(e.OldRelativePath, removed: true, structural: true);
+                        BufferChange(e.OldRelativePath, structural: true);
                     }
 
-                    BufferChange(e.RelativePath, removed: false, structural: true);
+                    BufferChange(e.RelativePath, structural: true);
                     break;
                 default:
                     return;
@@ -223,9 +223,8 @@ public sealed partial class VaultSession : IVaultSession
     }
 
     /// <param name="relativePath">Path reported by the watcher.</param>
-    /// <param name="removed">Whether the path disappeared.</param>
     /// <param name="structural">True for create / delete / rename, which may refer to a whole folder.</param>
-    private void BufferChange(string relativePath, bool removed, bool structural)
+    private void BufferChange(string relativePath, bool structural)
     {
         if (IsHidden(relativePath))
         {
@@ -234,7 +233,7 @@ public sealed partial class VaultSession : IVaultSession
 
         if (NotePath.TryCreate(relativePath, out var path))
         {
-            _bufferedChanges[path] = removed;
+            _bufferedChanges.Add(path);
         }
         else if (structural)
         {
@@ -251,7 +250,7 @@ public sealed partial class VaultSession : IVaultSession
     private Task FlushBufferedChangesAsync(CancellationToken cancellationToken)
     {
         bool rescan;
-        KeyValuePair<NotePath, bool>[] changes;
+        NotePath[] changes;
         lock (_bufferGate)
         {
             rescan = _rescanBuffered;
@@ -322,25 +321,16 @@ public sealed partial class VaultSession : IVaultSession
                 break;
 
             case IndexJobKind.Changes:
-                var removed = new List<NotePath>();
-                var affected = new List<NotePath>(job.ChangedPaths.Length);
-                foreach (var (path, wasRemoved) in job.ChangedPaths)
+                // Events only say "look at this path": what happens is decided by the current state of the
+                // file (indexed if it exists, removed if it does not). A stale "deleted" event therefore
+                // can never evict a note that was restored or rewritten in the meantime.
+                foreach (var path in job.ChangedPaths)
                 {
-                    affected.Add(path);
-                    if (wasRemoved)
-                    {
-                        removed.Add(path);
-                    }
-                    else
-                    {
-                        // Also handles a file that vanished again in the meantime.
-                        await _indexer.IndexFileAsync(path, cancellationToken).ConfigureAwait(false);
-                    }
+                    await _indexer.IndexFileAsync(path, cancellationToken).ConfigureAwait(false);
                 }
 
-                await _indexer.RemoveAsync(removed, cancellationToken).ConfigureAwait(false);
                 Events.PublishStatus(IndexStatus.Idle);
-                Events.PublishNotesChanged(NotesChangeSource.External, affected);
+                Events.PublishNotesChanged(NotesChangeSource.External, job.ChangedPaths);
                 break;
 
             default:
@@ -356,11 +346,11 @@ public sealed partial class VaultSession : IVaultSession
         Barrier,
     }
 
-    private sealed record IndexJob(IndexJobKind Kind, KeyValuePair<NotePath, bool>[] ChangedPaths, TaskCompletionSource? Completion)
+    private sealed record IndexJob(IndexJobKind Kind, NotePath[] ChangedPaths, TaskCompletionSource? Completion)
     {
         public static IndexJob Scan(bool rebuild) => new(rebuild ? IndexJobKind.Rebuild : IndexJobKind.Scan, [], null);
 
-        public static IndexJob Changes(KeyValuePair<NotePath, bool>[] changes) => new(IndexJobKind.Changes, changes, null);
+        public static IndexJob Changes(NotePath[] changes) => new(IndexJobKind.Changes, changes, null);
 
         public static IndexJob Barrier(TaskCompletionSource completion) => new(IndexJobKind.Barrier, [], completion);
     }
