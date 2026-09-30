@@ -77,7 +77,7 @@ public sealed class FileLoggerProviderTests : IDisposable
         logger.LogInformation("after dispose");
 
         logger.IsEnabled(LogLevel.Information).Should().BeFalse();
-        Directory.GetFiles(_paths.LogDirectory).Should().BeEmpty();
+        Directory.Exists(_paths.LogDirectory).Should().BeFalse("nothing was logged, so nothing is created on disk");
     }
 
     [Fact]
@@ -91,6 +91,48 @@ public sealed class FileLoggerProviderTests : IDisposable
         var dispose = async () => await provider.DisposeAsync();
 
         await dispose.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task LogFileHeldByAnotherProgram_LosesThatBatchOnly_NotTheLogger()
+    {
+        Directory.CreateDirectory(_paths.LogDirectory);
+        var today = Path.Combine(_paths.LogDirectory, "devnotes-20260930.log");
+        var provider = new FileLoggerProvider(_paths, _time);
+        var logger = provider.CreateLogger("A");
+
+        await using (new FileStream(today, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            logger.LogWarning("written while the file is locked");
+            await Task.Delay(TimeSpan.FromMilliseconds(400), TestContext.Current.CancellationToken); // Let the writer hit the lock.
+        }
+
+        logger.LogWarning("written after the lock was released");
+        await provider.DisposeAsync();
+
+        (await File.ReadAllTextAsync(today, TestContext.Current.CancellationToken)).Should().Contain("written after the lock was released");
+    }
+
+    [Fact]
+    public async Task OldLogFileThatCannotBeDeleted_DoesNotPreventLogging()
+    {
+        Directory.CreateDirectory(_paths.LogDirectory);
+        for (var day = 1; day <= 9; day++)
+        {
+            await File.WriteAllTextAsync(Path.Combine(_paths.LogDirectory, $"devnotes-202609{day:D2}.log"), "old", TestContext.Current.CancellationToken);
+        }
+
+        // The oldest file is open in an editor that does not allow deleting it.
+        await using (new FileStream(Path.Combine(_paths.LogDirectory, "devnotes-20260901.log"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var provider = new FileLoggerProvider(_paths, _time);
+            provider.CreateLogger("A").LogWarning("still logging");
+            await provider.DisposeAsync();
+        }
+
+        (await File.ReadAllTextAsync(Path.Combine(_paths.LogDirectory, "devnotes-20260930.log"), TestContext.Current.CancellationToken))
+            .Should().Contain("still logging");
+        File.Exists(Path.Combine(_paths.LogDirectory, "devnotes-20260902.log")).Should().BeFalse("the other old files are still pruned");
     }
 
     [Fact]

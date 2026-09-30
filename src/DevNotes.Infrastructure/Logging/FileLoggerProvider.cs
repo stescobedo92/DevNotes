@@ -78,35 +78,52 @@ public sealed class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
 
     private async Task WriteLoopAsync()
     {
-        try
+        var pruned = false;
+        await foreach (var first in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            Directory.CreateDirectory(_directory);
-            PruneOldFiles();
-
-            await foreach (var first in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
+            try
             {
-                var day = _timeProvider.GetUtcNow().ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-                var path = Path.Combine(_directory, $"devnotes-{day}.log");
-                var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 4096, FileOptions.Asynchronous);
-                await using (stream.ConfigureAwait(false))
+                Directory.CreateDirectory(_directory);
+                if (!pruned)
                 {
-                    var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                    await using (writer.ConfigureAwait(false))
-                    {
-                        // Drain everything that is already queued with a single open/flush.
-                        await writer.WriteLineAsync(first).ConfigureAwait(false);
-                        while (_queue.Reader.TryRead(out var next))
-                        {
-                            await writer.WriteLineAsync(next).ConfigureAwait(false);
-                        }
-                    }
+                    pruned = true;
+                    PruneOldFiles();
                 }
+
+                await WriteBatchAsync(first).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // The folder is not writable or the file is held by another program (an editor, a
+                // second instance). There is nowhere left to report it, so this batch is lost, but the
+                // next one tries again: one failure must not silence the log for the whole session.
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+    }
+
+    private async Task WriteBatchAsync(string first)
+    {
+        var day = _timeProvider.GetUtcNow().ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var path = Path.Combine(_directory, $"devnotes-{day}.log");
+        var stream = new FileStream(
+            path,
+            FileMode.Append,
+            FileAccess.Write,
+            FileShare.ReadWrite | FileShare.Delete, // Never in the way of someone reading the log.
+            bufferSize: 4096,
+            FileOptions.Asynchronous);
+        await using (stream.ConfigureAwait(false))
         {
-            // The log folder is not writable. There is nowhere left to report it: stop logging to
-            // file and let the queue drop lines (DropOldest) rather than take the application down.
+            var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            await using (writer.ConfigureAwait(false))
+            {
+                // Drain everything that is already queued with a single open/flush.
+                await writer.WriteLineAsync(first).ConfigureAwait(false);
+                while (_queue.Reader.TryRead(out var next))
+                {
+                    await writer.WriteLineAsync(next).ConfigureAwait(false);
+                }
+            }
         }
     }
 
@@ -116,7 +133,14 @@ public sealed class FileLoggerProvider : ILoggerProvider, IAsyncDisposable
         Array.Sort(files, StringComparer.Ordinal);
         for (var i = 0; i < files.Length - RetainedFiles; i++)
         {
-            File.Delete(files[i]);
+            try
+            {
+                File.Delete(files[i]);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // An old log that is open somewhere stays for now; it is pruned on a later start.
+            }
         }
     }
 
