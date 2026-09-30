@@ -1,0 +1,99 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DevNotes.Desktop.ViewModels"
+             xmlns:res="using:DevNotes.Desktop.Resources"
+             xmlns:conv="using:DevNotes.Desktop.Converters"
+             x:Class="DevNotes.Desktop.Views.InspectorView"
+             x:DataType="vm:NoteEditorViewModel"
+             AutomationProperties.Name="{x:Static res:Strings.A11y_Inspector}">
+  <Border Classes="panel panelRight">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel IsVisible="{Binding HasNote}">
+
+        <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Inspector_Metadata}" />
+        <Grid Margin="{DynamicResource Inset3}"
+              ColumnDefinitions="Auto,*"
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+              DataContext="{Binding Details}"
+              x:DataType="vm:NoteDetailsViewModel">
+          <Grid.Styles>
+            <Style Selector="TextBlock.label">
+              <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+              <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}" />
+              <Setter Property="Margin" Value="{DynamicResource GapRight2}" />
+              <Setter Property="VerticalAlignment" Value="Top" />
+            </Style>
+            <Style Selector="SelectableTextBlock.value">
+              <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}" />
+              <Setter Property="TextWrapping" Value="Wrap" />
+              <Setter Property="Margin" Value="{DynamicResource GapBelow2}" />
+            </Style>
+          </Grid.Styles>
+
+          <TextBlock Grid.Row="0" Classes="label" Text="{x:Static res:Strings.Field_Type}" />
+          <SelectableTextBlock Grid.Row="0" Grid.Column="1" Classes="value" Text="{Binding TypeLabel}" />
+
+          <TextBlock Grid.Row="1" Classes="label" Text="{x:Static res:Strings.Field_Project}" />
+          <SelectableTextBlock Grid.Row="1" Grid.Column="1" Classes="value" Text="{Binding Project}" />
+
+          <TextBlock Grid.Row="2" Classes="label" Text="{x:Static res:Strings.Field_Tags}" />
+          <Panel Grid.Row="2" Grid.Column="1" Margin="{DynamicResource GapBelow2}">
+            <ItemsControl ItemsSource="{Binding Tags}" IsVisible="{Binding HasTags}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Border Classes="chip"
+                          Margin="{DynamicResource GapBelow1}"
+                          BorderBrush="{Binding Converter={x:Static conv:NameToBrushConverter.Solid}}"
+                          Background="{Binding Converter={x:Static conv:NameToBrushConverter.Tint}}">
+                    <TextBlock Text="{Binding StringFormat='#{0}'}" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="small" IsVisible="{Binding !HasTags}" Text="{x:Static res:Strings.Field_None}" />
+          </Panel>
+
+          <TextBlock Grid.Row="3" Classes="label" Text="{x:Static res:Strings.Field_Created}" />
+          <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="value" Text="{Binding Created}" />
+
+          <TextBlock Grid.Row="4" Classes="label" Text="{x:Static res:Strings.Field_Updated}" />
+          <SelectableTextBlock Grid.Row="4" Grid.Column="1" Classes="value" Text="{Binding Updated}" />
+
+          <TextBlock Grid.Row="5" Classes="label" Text="{x:Static res:Strings.Field_Path}" />
+          <SelectableTextBlock Grid.Row="5" Grid.Column="1" Classes="value" Text="{Binding Path}" />
+
+          <TextBlock Grid.Row="6" Classes="label" Text="{x:Static res:Strings.Field_Id}" />
+          <SelectableTextBlock Grid.Row="6" Grid.Column="1" Classes="value code" Text="{Binding Id}" />
+        </Grid>
+
+        <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Inspector_Outline}" />
+        <TextBlock Classes="secondary small"
+                   Margin="{DynamicResource Inset3}"
+                   IsVisible="{Binding !HasOutline}"
+                   Text="{x:Static res:Strings.Inspector_NoHeadings}" />
+        <ItemsControl ItemsSource="{Binding Outline}"
+                      Margin="{DynamicResource Inset1}"
+                      AutomationProperties.Name="{x:Static res:Strings.A11y_Outline}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:OutlineItemViewModel">
+              <Button Classes="ghost wide"
+                      Command="{Binding $parent[UserControl].((vm:NoteEditorViewModel)DataContext).GoToHeadingCommand}"
+                      CommandParameter="{Binding}">
+                <TextBlock Classes="small"
+                           Margin="{Binding Level, Converter={x:Static conv:HeadingIndentConverter.Instance}}"
+                           Text="{Binding Text}"
+                           TextTrimming="CharacterEllipsis" />
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+      </StackPanel>
+    </ScrollViewer>
+  </Border>
+</UserControl>

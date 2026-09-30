@@ -1,0 +1,65 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DevNotes.Desktop.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://DevNotes/Styles/Tokens.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <!-- The Fluent palette is aligned with the design tokens so stock controls match the app surfaces. -->
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Dark"
+                               Accent="#4C8DFF"
+                               RegionColor="#0F1115"
+                               AltHigh="#0F1115"
+                               AltMediumHigh="#161A21"
+                               AltMedium="#161A21"
+                               AltMediumLow="#161A21"
+                               AltLow="#161A21"
+                               BaseHigh="#E6E9EF"
+                               BaseMediumHigh="#C5CAD3"
+                               BaseMedium="#9AA3B2"
+                               BaseMediumLow="#6B7484"
+                               BaseLow="#2A303B"
+                               ChromeLow="#161A21"
+                               ChromeMediumLow="#1D222B"
+                               ChromeMedium="#1D222B"
+                               ChromeHigh="#2A303B"
+                               ListLow="#1D222B"
+                               ListMedium="#2A303B"
+                               ErrorText="#F85149" />
+        <ColorPaletteResources x:Key="Light"
+                               Accent="#0969DA"
+                               RegionColor="#FFFFFF"
+                               AltHigh="#FFFFFF"
+                               AltMediumHigh="#F6F8FA"
+                               AltMedium="#F6F8FA"
+                               AltMediumLow="#F6F8FA"
+                               AltLow="#F6F8FA"
+                               BaseHigh="#1F2328"
+                               BaseMediumHigh="#3D444D"
+                               BaseMedium="#59636E"
+                               BaseMediumLow="#818B98"
+                               BaseLow="#D8DEE4"
+                               ChromeLow="#F6F8FA"
+                               ChromeMediumLow="#F6F8FA"
+                               ChromeMedium="#EEF1F4"
+                               ChromeHigh="#D8DEE4"
+                               ListLow="#EEF1F4"
+                               ListMedium="#D8DEE4"
+                               ErrorText="#CF222E" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+
+    <!-- Required by AvaloniaEdit -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+    <StyleInclude Source="avares://DevNotes/Styles/AppStyles.axaml" />
+  </Application.Styles>
+</Application>

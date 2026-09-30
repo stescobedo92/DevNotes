@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppName" xml:space="preserve"><value>DevNotes</value></data>
+
+  <data name="Action_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Action_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Action_Create" xml:space="preserve"><value>Create</value></data>
+  <data name="Action_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Action_Move" xml:space="preserve"><value>Move</value></data>
+  <data name="Action_Rename" xml:space="preserve"><value>Rename</value></data>
+  <data name="Action_Restore" xml:space="preserve"><value>Restore</value></data>
+  <data name="Action_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Action_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="Action_Copied" xml:space="preserve"><value>Copied</value></data>
+  <data name="Action_Dismiss" xml:space="preserve"><value>Dismiss</value></data>
+  <data name="Action_Remove" xml:space="preserve"><value>Remove</value></data>
+
+  <data name="Welcome_Title" xml:space="preserve"><value>Welcome to DevNotes</value></data>
+  <data name="Welcome_Body" xml:space="preserve"><value>Choose the folder where your Markdown notes live. The files stay yours: DevNotes only reads and writes plain .md files and keeps a disposable search index outside the folder.</value></data>
+  <data name="Welcome_ChooseFolder" xml:space="preserve"><value>Choose notes folder…</value></data>
+  <data name="Empty_NoNotes_Title" xml:space="preserve"><value>This vault has no notes yet</value></data>
+  <data name="Empty_NoNotes_Hint" xml:space="preserve"><value>Press {0} to create the first one.</value></data>
+  <data name="Empty_NoVault_Title" xml:space="preserve"><value>No vault is open</value></data>
+  <data name="Empty_NoVault_Hint" xml:space="preserve"><value>Choose a vault in the sidebar, or add a folder.</value></data>
+  <data name="Empty_NoResults_Title" xml:space="preserve"><value>No notes match your search</value></data>
+  <data name="Empty_NoResults_Hint" xml:space="preserve"><value>Try fewer or different words.</value></data>
+  <data name="Empty_NoNoteOpen_Title" xml:space="preserve"><value>No note open</value></data>
+  <data name="Empty_NoNoteOpen_Hint" xml:space="preserve"><value>Select a note from the list or press {0} to find one.</value></data>
+
+  <data name="Sidebar_Vaults" xml:space="preserve"><value>Vaults</value></data>
+  <data name="Sidebar_AddVault" xml:space="preserve"><value>Add vault…</value></data>
+  <data name="Sidebar_NewNote" xml:space="preserve"><value>New note</value></data>
+  <data name="Sidebar_Trash" xml:space="preserve"><value>Trash</value></data>
+  <data name="Sidebar_Reindex" xml:space="preserve"><value>Reindex all</value></data>
+  <data name="Sidebar_RemoveVault" xml:space="preserve"><value>Remove vault from DevNotes</value></data>
+  <data name="Sidebar_Actions" xml:space="preserve"><value>Actions</value></data>
+
+  <data name="Search_Placeholder" xml:space="preserve"><value>Search notes…</value></data>
+  <data name="Sort_Label" xml:space="preserve"><value>Sort by</value></data>
+  <data name="Sort_Updated" xml:space="preserve"><value>Date</value></data>
+  <data name="Sort_Title" xml:space="preserve"><value>Title</value></data>
+  <data name="Sort_Relevance" xml:space="preserve"><value>Relevance</value></data>
+  <data name="List_Truncated" xml:space="preserve"><value>Showing the first {0} notes</value></data>
+  <data name="List_Searching" xml:space="preserve"><value>Searching…</value></data>
+
+  <data name="Mode_Editor" xml:space="preserve"><value>Editor</value></data>
+  <data name="Mode_Split" xml:space="preserve"><value>Split</value></data>
+  <data name="Mode_Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="Save_Saved" xml:space="preserve"><value>Saved</value></data>
+  <data name="Save_Modified" xml:space="preserve"><value>Unsaved changes</value></data>
+  <data name="Save_Saving" xml:space="preserve"><value>Saving…</value></data>
+  <data name="Save_Failed" xml:space="preserve"><value>Not saved</value></data>
+  <data name="Save_Conflict" xml:space="preserve"><value>Conflict</value></data>
+  <data name="Conflict_Modified" xml:space="preserve"><value>This note was changed outside DevNotes while you were editing it. Nothing has been overwritten.</value></data>
+  <data name="Conflict_Deleted" xml:space="preserve"><value>This note was deleted or moved outside DevNotes while you were editing it.</value></data>
+  <data name="Conflict_KeepMine" xml:space="preserve"><value>Keep my version</value></data>
+  <data name="Conflict_LoadDisk" xml:space="preserve"><value>Load the version on disk</value></data>
+  <data name="Conflict_Discard" xml:space="preserve"><value>Discard my changes</value></data>
+  <data name="Conflict_SaveCopy" xml:space="preserve"><value>Save mine as a copy</value></data>
+  <data name="Frontmatter_Invalid" xml:space="preserve"><value>The frontmatter could not be read, so it is left untouched: {0}</value></data>
+
+  <data name="Inspector_Metadata" xml:space="preserve"><value>Metadata</value></data>
+  <data name="Inspector_Outline" xml:space="preserve"><value>Contents</value></data>
+  <data name="Inspector_NoHeadings" xml:space="preserve"><value>No headings</value></data>
+  <data name="Field_Type" xml:space="preserve"><value>Type</value></data>
+  <data name="Field_Project" xml:space="preserve"><value>Project</value></data>
+  <data name="Field_Tags" xml:space="preserve"><value>Tags</value></data>
+  <data name="Field_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Field_Updated" xml:space="preserve"><value>Updated</value></data>
+  <data name="Field_Path" xml:space="preserve"><value>File</value></data>
+  <data name="Field_Id" xml:space="preserve"><value>Id</value></data>
+  <data name="Field_None" xml:space="preserve"><value>—</value></data>
+
+  <data name="Status_NoVault" xml:space="preserve"><value>No vault</value></data>
+  <data name="Status_Notes" xml:space="preserve"><value>{0} notes</value></data>
+  <data name="Status_IndexReady" xml:space="preserve"><value>Index up to date</value></data>
+  <data name="Status_Indexing" xml:space="preserve"><value>Indexing…</value></data>
+  <data name="Status_IndexingProgress" xml:space="preserve"><value>Indexing {0} of {1}…</value></data>
+  <data name="Status_IndexFailed" xml:space="preserve"><value>Index error: {0}</value></data>
+
+  <data name="Dialog_NewNote_Title" xml:space="preserve"><value>New note</value></data>
+  <data name="Dialog_NewNote_Label" xml:space="preserve"><value>Title</value></data>
+  <data name="Dialog_Rename_Title" xml:space="preserve"><value>Rename note</value></data>
+  <data name="Dialog_Rename_Label" xml:space="preserve"><value>New title</value></data>
+  <data name="Dialog_Move_Title" xml:space="preserve"><value>Move note</value></data>
+  <data name="Dialog_Move_Label" xml:space="preserve"><value>Destination folder (leave empty for the vault root)</value></data>
+  <data name="Dialog_Delete_Title" xml:space="preserve"><value>Delete note?</value></data>
+  <data name="Dialog_Delete_Message" xml:space="preserve"><value>“{0}” will be moved to the trash of this vault. You can restore it later.</value></data>
+  <data name="Dialog_Trash_Title" xml:space="preserve"><value>Trash</value></data>
+  <data name="Dialog_Trash_Empty" xml:space="preserve"><value>The trash is empty</value></data>
+  <data name="Dialog_Trash_EmptyAll" xml:space="preserve"><value>Empty trash</value></data>
+  <data name="Dialog_Trash_DeleteForever" xml:space="preserve"><value>Delete permanently</value></data>
+  <data name="Dialog_Trash_DeletedAt" xml:space="preserve"><value>Deleted {0}</value></data>
+  <data name="Dialog_EmptyTrash_Title" xml:space="preserve"><value>Empty the trash?</value></data>
+  <data name="Dialog_EmptyTrash_Message" xml:space="preserve"><value>{0} notes will be deleted permanently. This cannot be undone.</value></data>
+  <data name="Dialog_DeleteForever_Title" xml:space="preserve"><value>Delete permanently?</value></data>
+  <data name="Dialog_DeleteForever_Message" xml:space="preserve"><value>“{0}” will be deleted permanently. This cannot be undone.</value></data>
+  <data name="Dialog_RemoveVault_Title" xml:space="preserve"><value>Remove vault?</value></data>
+  <data name="Dialog_RemoveVault_Message" xml:space="preserve"><value>“{0}” will be removed from DevNotes. The notes stay on disk untouched; only the search index is deleted.</value></data>
+
+  <data name="Dialog_CloseUnsaved_Confirm" xml:space="preserve"><value>Close and discard</value></data>
+  <data name="Dialog_CloseUnsaved_Message" xml:space="preserve"><value>The open note has changes that could not be saved. If you close now, those changes are lost.</value></data>
+  <data name="Dialog_CloseUnsaved_Title" xml:space="preserve"><value>Close without saving?</value></data>
+
+  <data name="Error_TitleRequired" xml:space="preserve"><value>Enter a title (up to {0} characters).</value></data>
+  <data name="Error_InvalidFolder" xml:space="preserve"><value>That folder is not valid. Use a path inside the vault without special characters.</value></data>
+  <data name="Error_NoteExists" xml:space="preserve"><value>A note with that name already exists in the destination.</value></data>
+  <data name="Error_NoteNotFound" xml:space="preserve"><value>The note no longer exists on disk.</value></data>
+  <data name="Error_FolderNotFound" xml:space="preserve"><value>The folder does not exist: {0}</value></data>
+  <data name="Error_AccessDenied" xml:space="preserve"><value>DevNotes does not have permission to do that: {0}</value></data>
+  <data name="Error_Io" xml:space="preserve"><value>The operation could not be completed: {0}</value></data>
+  <data name="Error_SaveFailed" xml:space="preserve"><value>The note could not be saved: {0} Your text is still in the editor; it will be retried on the next change or when you press Save.</value></data>
+  <data name="Error_UnsavedChanges" xml:space="preserve"><value>The current note has changes that could not be saved. Resolve that first so nothing is lost.</value></data>
+  <data name="Error_OpenVault" xml:space="preserve"><value>The vault could not be opened: {0}</value></data>
+  <data name="Error_Unexpected" xml:space="preserve"><value>Something went wrong: {0}</value></data>
+
+  <data name="Notify_Reloaded" xml:space="preserve"><value>The note changed on disk and was reloaded.</value></data>
+  <data name="Notify_DeletedExternally" xml:space="preserve"><value>The note was deleted outside DevNotes.</value></data>
+  <data name="Notify_MovedToTrash" xml:space="preserve"><value>Moved to the trash.</value></data>
+  <data name="Notify_Restored" xml:space="preserve"><value>Note restored.</value></data>
+  <data name="Notify_Reindexing" xml:space="preserve"><value>Rebuilding the index from the Markdown files…</value></data>
+  <data name="Notify_CopySaved" xml:space="preserve"><value>Your version was saved as “{0}”.</value></data>
+  <data name="Notify_CodeCopied" xml:space="preserve"><value>Code copied to the clipboard.</value></data>
+  <data name="Notify_LinkBlocked" xml:space="preserve"><value>That link cannot be opened. Only web (http, https) and mail links are allowed.</value></data>
+
+  <data name="Quick_NotesPlaceholder" xml:space="preserve"><value>Search or jump to a note…</value></data>
+  <data name="Quick_CommandsPlaceholder" xml:space="preserve"><value>Type a command…</value></data>
+  <data name="Quick_NoMatches" xml:space="preserve"><value>No matches</value></data>
+
+  <data name="Command_NewNote" xml:space="preserve"><value>New note</value></data>
+  <data name="Command_Save" xml:space="preserve"><value>Save note</value></data>
+  <data name="Command_Search" xml:space="preserve"><value>Search notes</value></data>
+  <data name="Command_SwitchNote" xml:space="preserve"><value>Go to note…</value></data>
+  <data name="Command_Palette" xml:space="preserve"><value>Command palette</value></data>
+  <data name="Command_ToggleSidebar" xml:space="preserve"><value>Toggle sidebar</value></data>
+  <data name="Command_ToggleInspector" xml:space="preserve"><value>Toggle details panel</value></data>
+  <data name="Command_ToggleViewMode" xml:space="preserve"><value>Switch editor / split / preview</value></data>
+  <data name="Command_Rename" xml:space="preserve"><value>Rename note</value></data>
+  <data name="Command_Move" xml:space="preserve"><value>Move note…</value></data>
+  <data name="Command_Delete" xml:space="preserve"><value>Delete note</value></data>
+  <data name="Command_OpenTrash" xml:space="preserve"><value>Open trash</value></data>
+  <data name="Command_AddVault" xml:space="preserve"><value>Add vault…</value></data>
+  <data name="Command_Reindex" xml:space="preserve"><value>Reindex all</value></data>
+  <data name="Command_ThemeDark" xml:space="preserve"><value>Theme: dark</value></data>
+  <data name="Command_ThemeLight" xml:space="preserve"><value>Theme: light</value></data>
+  <data name="Command_ThemeSystem" xml:space="preserve"><value>Theme: follow system</value></data>
+  <data name="Command_ZoomIn" xml:space="preserve"><value>Increase font size</value></data>
+  <data name="Command_ZoomOut" xml:space="preserve"><value>Decrease font size</value></data>
+  <data name="Command_ZoomReset" xml:space="preserve"><value>Reset font size</value></data>
+  <data name="Command_DensityCompact" xml:space="preserve"><value>Density: compact</value></data>
+  <data name="Command_DensityComfortable" xml:space="preserve"><value>Density: comfortable</value></data>
+  <data name="Command_FocusEditor" xml:space="preserve"><value>Focus editor</value></data>
+  <data name="Command_FocusList" xml:space="preserve"><value>Filter the note list</value></data>
+
+  <data name="A11y_Sidebar" xml:space="preserve"><value>Sidebar</value></data>
+  <data name="A11y_VaultList" xml:space="preserve"><value>Vaults</value></data>
+  <data name="A11y_SearchBox" xml:space="preserve"><value>Search notes</value></data>
+  <data name="A11y_NoteList" xml:space="preserve"><value>Notes</value></data>
+  <data name="A11y_Editor" xml:space="preserve"><value>Note editor</value></data>
+  <data name="A11y_Preview" xml:space="preserve"><value>Note preview</value></data>
+  <data name="A11y_Inspector" xml:space="preserve"><value>Note details</value></data>
+  <data name="A11y_StatusBar" xml:space="preserve"><value>Status bar</value></data>
+  <data name="A11y_ViewMode" xml:space="preserve"><value>View mode</value></data>
+  <data name="A11y_CodeBlock" xml:space="preserve"><value>Code block</value></data>
+  <data name="A11y_CopyCode" xml:space="preserve"><value>Copy code</value></data>
+  <data name="A11y_QuickOpenInput" xml:space="preserve"><value>Quick open</value></data>
+  <data name="A11y_QuickOpenResults" xml:space="preserve"><value>Results</value></data>
+  <data name="A11y_Outline" xml:space="preserve"><value>Table of contents</value></data>
+  <data name="A11y_Dialog" xml:space="preserve"><value>Dialog</value></data>
+  <data name="A11y_Notification" xml:space="preserve"><value>Notification</value></data>
+  <data name="A11y_TrashList" xml:space="preserve"><value>Deleted notes</value></data>
+  <data name="A11y_Image" xml:space="preserve"><value>Image: {0}</value></data>
+
+  <data name="Type_note" xml:space="preserve"><value>Note</value></data>
+  <data name="Type_bug" xml:space="preserve"><value>Bug</value></data>
+  <data name="Type_adr" xml:space="preserve"><value>Decision (ADR)</value></data>
+  <data name="Type_runbook" xml:space="preserve"><value>Runbook</value></data>
+  <data name="Type_learning" xml:space="preserve"><value>Learning</value></data>
+  <data name="Type_snippet" xml:space="preserve"><value>Snippet</value></data>
+</root>

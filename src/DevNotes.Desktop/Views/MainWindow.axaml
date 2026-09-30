@@ -1,0 +1,145 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DevNotes.Desktop.ViewModels"
+        xmlns:views="using:DevNotes.Desktop.Views"
+        xmlns:res="using:DevNotes.Desktop.Resources"
+        x:Class="DevNotes.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{x:Static res:Strings.AppName}"
+        Classes.motion="{Binding IsMotionEnabled}"
+        MinWidth="{DynamicResource WindowMinWidth}"
+        MinHeight="{DynamicResource WindowMinHeight}"
+        WindowStartupLocation="CenterScreen">
+  <Panel>
+
+    <Grid RowDefinitions="*,Auto">
+
+      <!--
+        Three resizable panels: sidebar | search + list + editor | details.
+        Panel sizes come from the persisted layout and are applied by the code-behind.
+      -->
+      <Grid x:Name="Shell" ColumnDefinitions="Auto,Auto,*,Auto,Auto" IsVisible="{Binding HasVaults}">
+
+        <Panel Grid.Column="0" IsVisible="{Binding !IsSidebarCollapsed}">
+          <views:SidebarView x:Name="Sidebar" />
+        </Panel>
+        <GridSplitter Grid.Column="1"
+                      Width="{DynamicResource SplitterThickness}"
+                      ResizeDirection="Columns"
+                      IsVisible="{Binding !IsSidebarCollapsed}" />
+
+        <Grid x:Name="Center" Grid.Column="2" RowDefinitions="Auto,Auto,*">
+          <views:NoteListView x:Name="NoteList" Grid.Row="0" DataContext="{Binding NoteList}" />
+          <GridSplitter Grid.Row="1"
+                        Height="{DynamicResource SplitterThickness}"
+                        ResizeDirection="Rows" />
+          <Panel Grid.Row="2" IsVisible="{Binding Editor.HasNote}">
+            <views:NoteEditorView x:Name="EditorView" DataContext="{Binding Editor}" />
+          </Panel>
+          <StackPanel Grid.Row="2"
+                      IsVisible="{Binding !Editor.HasNote}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      MaxWidth="{DynamicResource EmptyStateWidth}">
+            <TextBlock Classes="title" TextAlignment="Center" Text="{x:Static res:Strings.Empty_NoNoteOpen_Title}" />
+            <TextBlock Classes="secondary"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="{DynamicResource GapAbove2}"
+                       Text="{Binding NoNoteOpenHint}" />
+          </StackPanel>
+        </Grid>
+
+        <GridSplitter Grid.Column="3"
+                      Width="{DynamicResource SplitterThickness}"
+                      ResizeDirection="Columns"
+                      IsVisible="{Binding !IsInspectorCollapsed}" />
+        <Panel Grid.Column="4" IsVisible="{Binding !IsInspectorCollapsed}">
+          <views:InspectorView x:Name="Inspector" DataContext="{Binding Editor}" />
+        </Panel>
+      </Grid>
+
+      <!-- First run: no vault yet -->
+      <StackPanel IsVisible="{Binding ShowWelcome}"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  MaxWidth="{DynamicResource EmptyStateWidth}">
+        <TextBlock Classes="display" TextAlignment="Center" TextWrapping="Wrap" Text="{x:Static res:Strings.Welcome_Title}" />
+        <TextBlock Classes="secondary"
+                   TextAlignment="Center"
+                   TextWrapping="Wrap"
+                   Margin="{DynamicResource GapAbove4}"
+                   Text="{x:Static res:Strings.Welcome_Body}" />
+        <Button x:Name="ChooseFolderButton"
+                Classes="primary"
+                HorizontalAlignment="Center"
+                Margin="{DynamicResource GapAbove4}"
+                Command="{Binding AddVaultCommand}"
+                Content="{x:Static res:Strings.Welcome_ChooseFolder}" />
+      </StackPanel>
+
+      <!-- Status bar: vault, number of notes, index state -->
+      <Border Grid.Row="1"
+              Classes="panel panelBottom"
+              Padding="{DynamicResource InsetStatusBar}"
+              AutomationProperties.Name="{x:Static res:Strings.A11y_StatusBar}">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <ProgressBar Width="{DynamicResource IndexProgressWidth}"
+                         MinWidth="{DynamicResource IndexProgressWidth}"
+                         VerticalAlignment="Center"
+                         Margin="{DynamicResource GapRight2}"
+                         IsVisible="{Binding IsIndexing}"
+                         IsIndeterminate="{Binding IsIndexProgressIndeterminate}"
+                         Minimum="0"
+                         Maximum="1"
+                         Value="{Binding IndexProgress}" />
+            <TextBlock x:Name="IndexStatus"
+                       Classes="secondary small"
+                       Classes.error="{Binding HasIndexError}"
+                       VerticalAlignment="Center"
+                       Text="{Binding IndexStatusText}"
+                       AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock x:Name="VaultNameText" Classes="small strong" VerticalAlignment="Center" Text="{Binding VaultName}" />
+            <TextBlock x:Name="NoteCountText"
+                       Classes="secondary small"
+                       VerticalAlignment="Center"
+                       Margin="{DynamicResource InsetSidebarItem}"
+                       Text="{Binding NoteCountText}" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <!-- Toast -->
+    <Border Classes="toast fade"
+            Classes.error="{Binding Notification.IsError}"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Margin="{DynamicResource Inset6}"
+            MaxWidth="{DynamicResource DialogWidth}"
+            IsVisible="{Binding Notification.IsVisible}"
+            AutomationProperties.Name="{x:Static res:Strings.A11y_Notification}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Classes="ghost"
+                VerticalAlignment="Top"
+                Command="{Binding Notification.DismissCommand}"
+                Content="✕"
+                AutomationProperties.Name="{x:Static res:Strings.Action_Dismiss}" />
+        <TextBlock x:Name="ToastText"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Center"
+                   Text="{Binding Notification.Message}"
+                   AutomationProperties.LiveSetting="Assertive" />
+      </DockPanel>
+    </Border>
+
+    <!-- Overlays: quick open / command palette, then dialogs on top -->
+    <views:QuickOpenView x:Name="QuickOpen" DataContext="{Binding QuickOpen}" />
+    <views:DialogHostView x:Name="DialogHost" DataContext="{Binding Dialogs}" />
+
+  </Panel>
+</Window>
