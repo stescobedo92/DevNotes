@@ -469,15 +469,7 @@ public sealed class VaultFileStore : INoteFileStore
     /// vault. A vault cloned from a repository could ship <c>.devnotes</c> (or its <c>trash</c>) as a
     /// link to any other folder; emptying the trash would then delete that folder's content.
     /// </summary>
-    private void EnsureTrashIsNotLinked()
-    {
-        var internalFolder = new DirectoryInfo(Path.Combine(_root, InternalFolderName));
-        if (IsLink(internalFolder) || IsLink(new DirectoryInfo(_trashRoot)))
-        {
-            throw new UnauthorizedAccessException(
-                $"'{InternalFolderName}' in this vault is a link to another folder; the trash is not used through links.");
-        }
-    }
+    private void EnsureTrashIsNotLinked() => InternalFolder.EnsureNotLinked(_root, TrashFolderName);
 
     private bool TrashExists()
     {
@@ -499,25 +491,7 @@ public sealed class VaultFileStore : INoteFileStore
         }
     }
 
-    private void EnsureInternalFolder()
-    {
-        EnsureTrashIsNotLinked();
-        Directory.CreateDirectory(_trashRoot);
-        EnsureTrashIsNotLinked();
-
-        var gitignore = Path.Combine(_root, InternalFolderName, ".gitignore");
-        try
-        {
-            // Keeps the trash out of the user's Git history when the vault is a repository. CreateNew
-            // never writes through an existing entry, be it a file or a (dangling) link.
-            using var stream = new FileStream(gitignore, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            stream.Write("*\n"u8);
-        }
-        catch (IOException) when (File.Exists(gitignore) || new FileInfo(gitignore).LinkTarget is not null)
-        {
-            // Already there.
-        }
-    }
+    private void EnsureInternalFolder() => InternalFolder.Ensure(_root, TrashFolderName);
 
     private async Task<TrashEntry?> TryReadTrashEntryAsync(string entryDirectory, CancellationToken cancellationToken)
     {
@@ -569,9 +543,7 @@ public sealed class VaultFileStore : INoteFileStore
     private static bool IsLink(ref FileSystemEntry entry) =>
         (entry.Attributes & FileAttributes.ReparsePoint) != 0 && entry.ToFileSystemInfo().LinkTarget is not null;
 
-    // Cloud-sync placeholders (OneDrive…) are reparse points too but have no link target; only real links are rejected.
-    private static bool IsLink(FileSystemInfo info) =>
-        info.Exists && (info.Attributes & FileAttributes.ReparsePoint) != 0 && info.LinkTarget is not null;
+    private static bool IsLink(FileSystemInfo info) => InternalFolder.IsLink(info);
 
     private static void TryDeleteDirectory(string directory)
     {

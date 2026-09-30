@@ -23,6 +23,8 @@ public interface IVaultSession : IAsyncDisposable
 
     INoteQueryService Queries { get; }
 
+    ITemplateService Templates { get; }
+
     VaultEventHub Events { get; }
 
     /// <summary>Prepares the index, starts watching the folder and queues the initial incremental scan.</summary>
@@ -68,12 +70,14 @@ public sealed partial class VaultSession : IVaultSession
         INoteFileStore files,
         INoteIndex index,
         IVaultWatcher watcher,
+        ITemplateStore templates,
         INoteIdGenerator idGenerator,
         TimeProvider timeProvider,
         IndexingOptions options,
         ILoggerFactory loggerFactory)
     {
         ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(templates);
         ArgumentNullException.ThrowIfNull(idGenerator);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(loggerFactory);
@@ -88,6 +92,7 @@ public sealed partial class VaultSession : IVaultSession
         _indexer = new VaultIndexer(files, index, options, loggerFactory.CreateLogger<VaultIndexer>());
         Notes = new NoteService(files, _indexer, Events, idGenerator, timeProvider, loggerFactory.CreateLogger<NoteService>());
         Queries = new NoteQueryService(index);
+        Templates = new TemplateService(templates);
         _debouncer = new Debouncer(timeProvider, options.WatcherDebounce, FlushBufferedChangesAsync, LogDebouncerFailed);
     }
 
@@ -96,6 +101,8 @@ public sealed partial class VaultSession : IVaultSession
     public INoteService Notes { get; }
 
     public INoteQueryService Queries { get; }
+
+    public ITemplateService Templates { get; }
 
     public VaultEventHub Events { get; }
 

@@ -422,7 +422,7 @@ public sealed class VaultFileStoreTests : IDisposable
         (await _store.ReadAsync(path, Ct)).Should().BeNull();
         (await _store.ListNotesAsync(Ct)).Should().BeEmpty("trashed notes are not part of the vault listing");
         (await _store.ListTrashAsync(Ct)).Should().Equal(entry);
-        File.ReadAllText(_vault.Combine(".devnotes", ".gitignore")).Should().Be("*\n");
+        File.ReadAllText(_vault.Combine(".devnotes", ".gitignore")).Should().Contain("trash/\n", "the trash is local, the templates next to it are meant to be versioned");
 
         var restored = await _store.RestoreFromTrashAsync(entry.Id, Ct);
 
