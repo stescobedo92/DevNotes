@@ -801,6 +801,41 @@ public sealed class OnDiskSqliteNoteIndexTests : SqliteNoteIndexTests
         FluentActions.Invoking(() => File.Delete(DatabasePath)).Should().NotThrow();
     }
 
+    [Fact]
+    public async Task DisposeAsync_WhileReadsAreRunning_ReturnsOnlyOnceNoReaderHoldsTheFile()
+    {
+        await Index.UpsertAsync([TestNotes.Create("a.md", "A", "Title", "body")], Ct);
+        var completed = 0;
+        var readers = Enumerable.Range(0, 8).Select(_ => Task.Run(
+            async () =>
+            {
+                try
+                {
+                    while (true)
+                    {
+                        await Index.CountAsync(Ct);
+                        Interlocked.Increment(ref completed);
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The index was closed under the reader, which is how its loop ends.
+                }
+            },
+            Ct)).ToList();
+        while (Volatile.Read(ref completed) < 200)
+        {
+            await Task.Yield();
+        }
+
+        await Index.DisposeAsync();
+
+        // Right away, without waiting for the readers: the ones that were reading have finished and
+        // none opens the file again.
+        FluentActions.Invoking(() => File.Delete(DatabasePath)).Should().NotThrow();
+        await Task.WhenAll(readers);
+    }
+
     private async Task<SqliteConnection> OpenRawAsync()
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DatabasePath, Pooling = false, ForeignKeys = true }.ToString());
