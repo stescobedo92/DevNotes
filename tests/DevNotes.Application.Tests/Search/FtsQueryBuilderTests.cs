@@ -39,9 +39,8 @@ public sealed class FtsQueryBuilderTests
     [InlineData("foo AND NOT bar", "\"foo\" \"AND\" \"NOT\" \"bar\"*")]
     [InlineData("NEAR(a b, 5)", "\"NEAR(a\" \"b,\" \"5)\"*")]
     [InlineData("title:secret", "\"title:secret\"*")]
-    [InlineData("-excluded +required", "\"-excluded\" \"+required\"*")]
+    [InlineData("+required", "\"+required\"*")]
     [InlineData("pre* ^start", "\"pre*\" \"^start\"*")]
-    [InlineData("\"quoted phrase\"", "\"quoted\" \"phrase\"*")]
     [InlineData("a\"b\"\"c", "\"abc\"*")]
     [InlineData("x\" OR \"y", "\"x\" \"OR\" \"y\"*")]
     [InlineData("{col1 col2}: x", "\"{col1\" \"col2}:\" \"x\"*")]
@@ -56,6 +55,40 @@ public sealed class FtsQueryBuilderTests
         {
             AssertOnlyQuotedStrings(query.TrigramMatch);
         }
+    }
+
+    [Fact]
+    public void Build_Phrases_ArePassedAsOneQuotedString()
+    {
+        FtsQueryBuilder.Build("\"quoted phrase\"").Should().Be(new FtsQuery("\"quoted phrase\"", "\"quoted phrase\""));
+        FtsQueryBuilder.Build("\"still typ").Should().Be(new FtsQuery("\"still typ\"*", "\"still typ\""));
+        FtsQueryBuilder.Build("\"ab\" x").Should().Be(new FtsQuery("\"ab\" \"x\"*", null));
+    }
+
+    [Fact]
+    public void Build_ExcludedTerms_GoToASeparateExpressionAsAlternatives()
+    {
+        var query = FtsQueryBuilder.Build("fix -draft -\"work in progress\"");
+
+        query.Match.Should().Be("\"fix\"", "only the term at the end of the input is still being typed");
+        query.TrigramMatch.Should().Be("\"fix\"");
+        query.Exclude.Should().Be("\"draft\" OR \"work in progress\"");
+        AssertOnlyQuotedStrings(query.Match);
+    }
+
+    [Fact]
+    public void Build_OnlyExclusions_HasNoPositiveMatch()
+    {
+        var query = FtsQueryBuilder.Build("-draft");
+
+        query.IsEmpty.Should().BeTrue();
+        query.Exclude.Should().Be("\"draft\"");
+    }
+
+    [Fact]
+    public void Build_FiltersOnly_IsEmpty()
+    {
+        FtsQueryBuilder.Build("project:x tag:y").Should().Be(FtsQuery.Empty);
     }
 
     [Fact]

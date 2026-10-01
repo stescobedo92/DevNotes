@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace DevNotes.Infrastructure.Indexing;
 
@@ -8,7 +9,7 @@ namespace DevNotes.Infrastructure.Indexing;
 /// </summary>
 internal static class IndexSchema
 {
-    public const int Version = 2;
+    public const int Version = 3;
 
     public const string WordIndex = "notes_fts";
     public const string TrigramIndex = "notes_trigram";
@@ -43,6 +44,8 @@ internal static class IndexSchema
             sort_date    TEXT NOT NULL,
             file_size    INTEGER NOT NULL,
             file_mtime   INTEGER NOT NULL,
+            -- Case- and accent-folded project, so that filters and facets ignore both.
+            project_key  TEXT,
             -- Last on purpose: SQLite stores columns in declaration order and a long text spills into
             -- overflow pages, which would have to be followed to reach any column declared after it.
             body         TEXT NOT NULL
@@ -50,8 +53,11 @@ internal static class IndexSchema
 
         CREATE INDEX ix_notes_recent ON notes (sort_date DESC, file_mtime DESC, path);
         CREATE INDEX ix_notes_title ON notes (title_sort, path);
-        CREATE INDEX ix_notes_project ON notes (project) WHERE project IS NOT NULL;
+        -- Covers the project facet (key, display name and count) without touching the wide rows.
+        CREATE INDEX ix_notes_project ON notes (project_key, project) WHERE project_key IS NOT NULL;
         CREATE INDEX ix_notes_type ON notes (type);
+        CREATE INDEX ix_notes_created ON notes (created) WHERE created IS NOT NULL;
+        CREATE INDEX ix_notes_updated ON notes (updated) WHERE updated IS NOT NULL;
 
         CREATE TABLE tags (
             note_id TEXT NOT NULL REFERENCES notes (id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -103,85 +109,45 @@ internal static class IndexSchema
         END;
         """;
 
-    private const string SummaryColumns =
-        "n.rowid, n.id, n.path, n.title, n.project, n.type, n.tags, n.created, n.updated, n.file_mtime, n.sort_date, n.title_sort";
+    /// <summary>Columns read into a <c>NoteSummary</c>, in the order the reader expects; {0} is the alias of the notes table.</summary>
+    public const string SummaryColumns =
+        "{0}.rowid, {0}.id, {0}.path, {0}.title, {0}.project, {0}.type, {0}.tags, {0}.created, {0}.updated, {0}.file_mtime, {0}.sort_date, {0}.title_sort";
 
-    public const string ListRecent =
-        $"SELECT {SummaryColumns}, substr(n.body, 1, 320) FROM notes AS n ORDER BY n.sort_date DESC, n.file_mtime DESC, n.path LIMIT $limit";
+    public const int SummaryColumnCount = 12;
 
-    public const string ListByTitle =
-        $"SELECT {SummaryColumns}, substr(n.body, 1, 320) FROM notes AS n ORDER BY n.title_sort, n.path LIMIT $limit";
+    /// <summary>Characters of the body shown as excerpt in a listing row.</summary>
+    public const int ExcerptLength = 320;
 
-    public static readonly string WordSearchByRelevance = SearchByRelevance(WordIndex);
-    public static readonly string WordSearchByRecent = SearchBySortIndex(WordIndex, RecentOrder);
-    public static readonly string WordSearchByTitle = SearchBySortIndex(WordIndex, TitleOrder);
-    public static readonly string TrigramSearchByRelevance = SearchByRelevance(TrigramIndex);
-    public static readonly string TrigramSearchByRecent = SearchBySortIndex(TrigramIndex, RecentOrder);
-    public static readonly string TrigramSearchByTitle = SearchBySortIndex(TrigramIndex, TitleOrder);
+    // Static initializers run in textual order: these formats must exist before the statements below use them.
+    private static readonly CompositeFormat _summaryColumns = CompositeFormat.Parse(SummaryColumns);
+    private static readonly CompositeFormat _recentOrder = CompositeFormat.Parse(RecentOrder);
+    private static readonly CompositeFormat _titleOrder = CompositeFormat.Parse(TitleOrder);
+
+    public static readonly string ListRecent =
+        $"SELECT {Columns("n")}, substr(n.body, 1, {ExcerptLength}) FROM notes AS n ORDER BY {Order(RecentOrder, "n")} LIMIT $limit";
+
+    public static readonly string ListByTitle =
+        $"SELECT {Columns("n")}, substr(n.body, 1, {ExcerptLength}) FROM notes AS n ORDER BY {Order(TitleOrder, "n")} LIMIT $limit";
+
+    public const string ProjectFacets = """
+        SELECT min(project), count(*) AS notes
+        FROM notes
+        WHERE project_key IS NOT NULL
+        GROUP BY project_key
+        ORDER BY notes DESC, project_key
+        """;
+
+    public const string TagFacets = "SELECT tag, count(*) AS notes FROM tags GROUP BY tag ORDER BY notes DESC, tag";
+
+    public const string TypeFacets = "SELECT type, count(*) AS notes FROM notes GROUP BY type ORDER BY notes DESC, type";
 
     // The same orders as the plain listings, so both can be answered from ix_notes_recent / ix_notes_title.
     // {0} is the alias of the notes table.
-    private const string RecentOrder = "{0}.sort_date DESC, {0}.file_mtime DESC, {0}.path";
-    private const string TitleOrder = "{0}.title_sort, {0}.path";
+    public const string RecentOrder = "{0}.sort_date DESC, {0}.file_mtime DESC, {0}.path";
+    public const string TitleOrder = "{0}.title_sort, {0}.path";
 
-    // How a search is shaped (measured with benchmarks/DevNotes.Benchmarks on 5,000 notes):
-    //
-    // 1. The innermost query picks WHICH notes are returned without touching the wide `notes` rows.
-    //    SQLite evaluates result columns before ORDER BY … LIMIT, so a single flat query would run
-    //    snippet() and highlight() - which read and tokenize the whole text - and join `notes` for
-    //    every match. The first letters the user types match almost every note, so that is
-    //    thousands of rows read to keep thirty.
-    // 2. The outer query builds the highlighted fragments for the chosen notes only.
-    //
-    // The unary plus in `+x.rowid IN (…)` is deliberate: it stops the planner from using the list as
-    // a rowid lookup (which would restart the full-text query once per row) and keeps it as a cheap
-    // membership filter on a single scan.
+    public static string Columns(string alias) => string.Format(CultureInfo.InvariantCulture, _summaryColumns, alias);
 
-    /// <summary>Best matches first; among equally relevant notes, the most recent first.</summary>
-    private static string SearchByRelevance(string index)
-    {
-        var score = $"bm25({index}, {Bm25Weights})";
-        return $"""
-            {SelectHits(index)}
-              AND +{index}.rowid IN (
-                  SELECT rowid
-                  FROM {index}
-                  WHERE {index} MATCH $match
-                  ORDER BY {score}, rowid
-                  LIMIT $limit)
-            ORDER BY score, n.sort_date DESC, n.rowid
-            LIMIT $limit
-            """;
-    }
-
-    /// <summary>
-    /// Matches in the order of one of the sort indexes: the index is walked in order and each entry is
-    /// checked against the set of matching rows, so the scan stops as soon as the limit is reached.
-    /// </summary>
-    private static string SearchBySortIndex(string index, string order)
-    {
-        var innerOrder = string.Format(CultureInfo.InvariantCulture, order, "m");
-        var outerOrder = string.Format(CultureInfo.InvariantCulture, order, "n");
-        return $"""
-            {SelectHits(index)}
-              AND +{index}.rowid IN (
-                  SELECT m.rowid
-                  FROM notes AS m
-                  WHERE +m.rowid IN (SELECT rowid FROM {index} WHERE {index} MATCH $match)
-                  ORDER BY {innerOrder}
-                  LIMIT $limit)
-            ORDER BY {outerOrder}
-            LIMIT $limit
-            """;
-    }
-
-    private static string SelectHits(string index) => $"""
-        SELECT {SummaryColumns},
-               snippet({index}, 1, $start, $end, $ellipsis, 18),
-               highlight({index}, 0, $start, $end),
-               bm25({index}, {Bm25Weights}) AS score
-        FROM {index}
-        JOIN notes AS n ON n.rowid = {index}.rowid
-        WHERE {index} MATCH $match
-        """;
+    public static string Order(string order, string alias) =>
+        string.Format(CultureInfo.InvariantCulture, order == TitleOrder ? _titleOrder : _recentOrder, alias);
 }

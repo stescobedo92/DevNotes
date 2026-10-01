@@ -81,6 +81,9 @@ public sealed partial class App : Avalonia.Application
         desktop.MainWindow = window;
         window.Show();
 
+        // The system-wide shortcut is registered against the window, so only once it exists.
+        services.GetRequiredService<QuickCaptureCoordinator>().Start(window);
+
         // The window is on screen; opening the vault and indexing continue in the background.
         await viewModel.InitializeAsync();
     }

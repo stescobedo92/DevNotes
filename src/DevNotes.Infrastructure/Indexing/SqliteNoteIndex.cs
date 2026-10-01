@@ -1,8 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Text;
 using DevNotes.Application.Abstractions;
 using DevNotes.Application.Search;
+using DevNotes.Domain.Common;
 using DevNotes.Domain.Notes;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -230,19 +230,24 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         return ReadAsync<IReadOnlyList<SearchHit>>(
             connection =>
             {
-                var rows = new List<SearchRow>();
-                if (query.Query.Match is not { } match || query.Limit <= 0)
+                if (query.Limit <= 0 || query.Filter.IsUnsatisfiable)
                 {
                     return [];
                 }
 
+                if (query.Query.Match is not { } match)
+                {
+                    return RunFilteredListing(connection, query, cancellationToken);
+                }
+
+                var rows = new List<SearchRow>();
                 var seen = new HashSet<long>();
-                RunSearch(connection, GetSearchSql(trigram: false, query.Sort), match, query.Limit, rows, seen, cancellationToken);
+                RunSearch(connection, query, match, trigram: false, rows, seen, cancellationToken);
 
                 // Substring matches (e.g. "Inventory" inside "UpdateInventoryAsync") complete the word matches.
                 if (rows.Count < query.Limit && query.Query.TrigramMatch is { } trigramMatch)
                 {
-                    RunSearch(connection, GetSearchSql(trigram: true, query.Sort), trigramMatch, query.Limit, rows, seen, cancellationToken);
+                    RunSearch(connection, query, trigramMatch, trigram: true, rows, seen, cancellationToken);
                 }
 
                 IEnumerable<SearchRow> ordered = query.Sort switch
@@ -261,6 +266,14 @@ public sealed partial class SqliteNoteIndex : INoteIndex
             },
             cancellationToken);
     }
+
+    public Task<NoteFacets> GetFacetsAsync(CancellationToken cancellationToken) =>
+        ReadAsync(
+            connection => new NoteFacets(
+                ReadFacets(connection, IndexSchema.ProjectFacets, cancellationToken),
+                ReadFacets(connection, IndexSchema.TagFacets, cancellationToken),
+                ReadFacets(connection, IndexSchema.TypeFacets, cancellationToken)),
+            cancellationToken);
 
     public async ValueTask DisposeAsync()
     {
@@ -298,22 +311,7 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         }
     }
 
-    internal static string ToSortKey(string title)
-    {
-        var decomposed = title.Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
-            {
-                builder.Append(char.ToUpperInvariant(c));
-            }
-        }
-
-        return builder.ToString();
-    }
-
-    private const int SummaryColumnCount = 12;
+    private const int SummaryColumnCount = IndexSchema.SummaryColumnCount;
 
     private static string BuildFileConnectionString(string databasePath) =>
         new SqliteConnectionStringBuilder
@@ -325,32 +323,23 @@ public sealed partial class SqliteNoteIndex : INoteIndex
             Pooling = true,
         }.ToString();
 
-    private static string GetSearchSql(bool trigram, NoteSortOrder sort) => (trigram, sort) switch
-    {
-        (false, NoteSortOrder.UpdatedDescending) => IndexSchema.WordSearchByRecent,
-        (false, NoteSortOrder.TitleAscending) => IndexSchema.WordSearchByTitle,
-        (false, _) => IndexSchema.WordSearchByRelevance,
-        (true, NoteSortOrder.UpdatedDescending) => IndexSchema.TrigramSearchByRecent,
-        (true, NoteSortOrder.TitleAscending) => IndexSchema.TrigramSearchByTitle,
-        (true, _) => IndexSchema.TrigramSearchByRelevance,
-    };
-
     private void RunSearch(
         SqliteConnection connection,
-        string sql,
+        SearchQuery query,
         string match,
-        int limit,
+        bool trigram,
         List<SearchRow> rows,
         HashSet<long> seen,
         CancellationToken cancellationToken)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = sql;
+        command.CommandText = SearchSql.For(SearchShape.Of(query, trigram));
         command.Parameters.AddWithValue("$match", match);
         command.Parameters.AddWithValue("$start", SnippetParser.MatchStart.ToString());
         command.Parameters.AddWithValue("$end", SnippetParser.MatchEnd.ToString());
         command.Parameters.AddWithValue("$ellipsis", SnippetParser.Ellipsis);
-        command.Parameters.AddWithValue("$limit", limit);
+        command.Parameters.AddWithValue("$limit", query.Limit);
+        BindFilter(command, query);
 
         try
         {
@@ -383,6 +372,99 @@ public sealed partial class SqliteNoteIndex : INoteIndex
             // expression the search yields no hits for that index instead of failing the whole UI.
             LogSearchRejected(exception.SqliteExtendedErrorCode);
         }
+    }
+
+    /// <summary>A search without text: the notes that satisfy the filter, in the requested order, with a plain excerpt.</summary>
+    private List<SearchHit> RunFilteredListing(SqliteConnection connection, SearchQuery query, CancellationToken cancellationToken)
+    {
+        var hits = new List<SearchHit>();
+        using var command = connection.CreateCommand();
+        command.CommandText = SearchSql.For(SearchShape.Of(query, trigram: false));
+        command.Parameters.AddWithValue("$limit", query.Limit);
+        BindFilter(command, query);
+
+        try
+        {
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (ReadSummary(reader, excerpt: reader.GetString(SummaryColumnCount)) is { } summary)
+                {
+                    hits.Add(new SearchHit(summary.Note, [], [], Score: 0));
+                }
+            }
+        }
+        catch (SqliteException exception) when (query.Query.Exclude is not null && IsRejectedSearchExpression(exception))
+        {
+            LogSearchRejected(exception.SqliteExtendedErrorCode);
+        }
+
+        return hits;
+    }
+
+    /// <summary>Binds the filter values under the names <see cref="SearchSql"/> uses.</summary>
+    private static void BindFilter(SqliteCommand command, SearchQuery query)
+    {
+        var filter = query.Filter;
+        var parameters = command.Parameters;
+        for (var i = 0; i < filter.Projects.Count; i++)
+        {
+            parameters.AddWithValue("$p" + i.ToString(CultureInfo.InvariantCulture), TextKey.Of(filter.Projects[i]));
+        }
+
+        for (var i = 0; i < filter.Tags.Count; i++)
+        {
+            parameters.AddWithValue("$t" + i.ToString(CultureInfo.InvariantCulture), filter.Tags[i].Value);
+        }
+
+        for (var i = 0; i < filter.Types.Count; i++)
+        {
+            parameters.AddWithValue("$ty" + i.ToString(CultureInfo.InvariantCulture), filter.Types[i].ToKey());
+        }
+
+        for (var i = 0; i < filter.Commits.Count; i++)
+        {
+            parameters.AddWithValue("$c" + i.ToString(CultureInfo.InvariantCulture), filter.Commits[i]);
+        }
+
+        for (var i = 0; i < filter.Tickets.Count; i++)
+        {
+            parameters.AddWithValue("$tk" + i.ToString(CultureInfo.InvariantCulture), filter.Tickets[i]);
+        }
+
+        BindDate(parameters, "$cf", filter.Created.From);
+        BindDate(parameters, "$ct", filter.Created.To);
+        BindDate(parameters, "$uf", filter.Updated.From);
+        BindDate(parameters, "$ut", filter.Updated.To);
+
+        if (query.Query.Exclude is { } exclude)
+        {
+            parameters.AddWithValue("$exclude", exclude);
+        }
+    }
+
+    private static void BindDate(SqliteParameterCollection parameters, string name, DateBound? bound)
+    {
+        if (bound is { } value)
+        {
+            parameters.AddWithValue(name, value.Date.ToString(DateFormat, CultureInfo.InvariantCulture));
+        }
+    }
+
+    private static List<FacetCount> ReadFacets(SqliteConnection connection, string sql, CancellationToken cancellationToken)
+    {
+        var facets = new List<FacetCount>();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            facets.Add(new FacetCount(reader.GetString(0), reader.GetInt32(1)));
+        }
+
+        return facets;
     }
 
     /// <summary>
@@ -606,8 +688,8 @@ public sealed partial class SqliteNoteIndex : INoteIndex
                 connection,
                 transaction,
                 """
-                INSERT INTO notes (id, path, title, project, type, created, updated, content_hash, body, tags, title_sort, sort_date, file_size, file_mtime)
-                VALUES ($id, $path, $title, $project, $type, $created, $updated, $hash, $body, $tags, $title_sort, $sort_date, $size, $mtime)
+                INSERT INTO notes (id, path, title, project, project_key, type, created, updated, content_hash, body, tags, title_sort, sort_date, file_size, file_mtime)
+                VALUES ($id, $path, $title, $project, $project_key, $type, $created, $updated, $hash, $body, $tags, $title_sort, $sort_date, $size, $mtime)
                 """,
                 NoteParameters);
             _update = Create(
@@ -615,9 +697,9 @@ public sealed partial class SqliteNoteIndex : INoteIndex
                 transaction,
                 """
                 UPDATE notes
-                SET id = $id, path = $path, title = $title, project = $project, type = $type, created = $created,
-                    updated = $updated, content_hash = $hash, body = $body, tags = $tags, title_sort = $title_sort,
-                    sort_date = $sort_date, file_size = $size, file_mtime = $mtime
+                SET id = $id, path = $path, title = $title, project = $project, project_key = $project_key, type = $type,
+                    created = $created, updated = $updated, content_hash = $hash, body = $body, tags = $tags,
+                    title_sort = $title_sort, sort_date = $sort_date, file_size = $size, file_mtime = $mtime
                 WHERE rowid = $rowid
                 """,
                 [.. NoteParameters, "$rowid"]);
@@ -636,7 +718,7 @@ public sealed partial class SqliteNoteIndex : INoteIndex
 
         private static string[] NoteParameters { get; } =
         [
-            "$id", "$path", "$title", "$project", "$type", "$created", "$updated", "$hash", "$body", "$tags",
+            "$id", "$path", "$title", "$project", "$project_key", "$type", "$created", "$updated", "$hash", "$body", "$tags",
             "$title_sort", "$sort_date", "$size", "$mtime",
         ];
 
@@ -705,13 +787,14 @@ public sealed partial class SqliteNoteIndex : INoteIndex
             parameters["$path"].Value = note.Path.Value;
             parameters["$title"].Value = Sanitize(metadata.Title);
             parameters["$project"].Value = (object?)metadata.Project ?? DBNull.Value;
+            parameters["$project_key"].Value = metadata.Project is { } project ? TextKey.Of(project) : DBNull.Value;
             parameters["$type"].Value = metadata.Type.ToKey();
             parameters["$created"].Value = FormatDate(metadata.Created);
             parameters["$updated"].Value = FormatDate(metadata.Updated);
             parameters["$hash"].Value = note.Hash.Hex;
             parameters["$body"].Value = Sanitize(note.Body);
             parameters["$tags"].Value = Sanitize(string.Join(' ', metadata.Tags.Select(tag => tag.Value)));
-            parameters["$title_sort"].Value = ToSortKey(metadata.Title);
+            parameters["$title_sort"].Value = TextKey.Of(metadata.Title);
             parameters["$sort_date"].Value =
                 (metadata.Updated ?? DateOnly.FromDateTime(note.FileLastWriteUtc.UtcDateTime)).ToString(DateFormat, CultureInfo.InvariantCulture);
             parameters["$size"].Value = note.FileSize;

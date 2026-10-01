@@ -148,6 +148,9 @@
   <x:Double x:Key="OverlayWidth">640</x:Double>
   <x:Double x:Key="OverlayMaxHeight">440</x:Double>
   <x:Double x:Key="DialogWidth">460</x:Double>
+  <!-- Dialogs with an editor or several sections (templates, settings): wider and taller, still inside the minimum window. -->
+  <x:Double x:Key="DialogWideWidth">680</x:Double>
+  <x:Double x:Key="DialogWideMaxHeight">460</x:Double>
   <x:Double x:Key="EmptyStateWidth">420</x:Double>
   <x:Double x:Key="IndexProgressWidth">96</x:Double>
 

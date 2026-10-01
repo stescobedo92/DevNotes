@@ -188,7 +188,7 @@ public sealed partial class QuickOpenViewModel : ObservableObject
         {
             try
             {
-                var result = await session.Queries.QueryAsync(Query, NoteSortOrder.Relevance, MaxResults, CancellationToken.None);
+                var result = await session.Queries.QueryAsync(Query, NoteFilter.Empty, NoteSortOrder.Relevance, MaxResults, CancellationToken.None);
                 items = [.. result.Entries.Select(entry => new QuickOpenItemViewModel(entry))];
             }
             catch (Exception exception) when (exception is DbException or ObjectDisposedException || ErrorMessages.IsExpected(exception))

@@ -30,12 +30,13 @@ public sealed class MainWindowInteractionTests
         var shell = harness.Shell;
 
         window.PressPrimary(Key.N);
-        await UiTest.WaitForAsync(() => shell.Dialogs.Current is PromptDialogViewModel, "the new note dialog");
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is NewNoteDialogViewModel, "the new note dialog");
         window.FindControl<DialogHostView>("DialogHost")!.IsEffectivelyVisible.Should().BeTrue();
+        await UiTest.WaitForAsync(() => window.FocusManager?.GetFocusedElement() is TextBox { Name: "NewNoteTitle" }, "focus in the title box");
 
         // Focus is already in the title box: just type and confirm with Enter.
         window.Type("Nota creada con el teclado");
-        ((PromptDialogViewModel)shell.Dialogs.Current!).Value.Should().Be("Nota creada con el teclado");
+        ((NewNoteDialogViewModel)shell.Dialogs.Current!).TitleInput.Should().Be("Nota creada con el teclado");
         window.Press(Key.Enter);
 
         await UiTest.WaitForAsync(() => shell.Editor.Path?.Value == "nota-creada-con-el-teclado.md", "the new note to open");

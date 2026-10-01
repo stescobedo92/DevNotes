@@ -49,12 +49,26 @@ public sealed class JsonSettingsStoreTests : IDisposable
             ViewMode = EditorViewMode.Preview,
             SortOrder = NoteSortOrder.TitleAscending,
             Layout = new LayoutSettings { SidebarWidth = 300, IsInspectorCollapsed = true, IsWindowMaximized = true, NoteListHeight = 400 },
+            Projects = [new ProjectSettings("cslinq", @"C:\src\cslinq"), new ProjectSettings("docs", null)],
+            QuickCapture = new QuickCaptureSettings { GlobalHotkeyEnabled = false, Hotkey = "Ctrl+Shift+F9" },
         };
 
         await _store.SaveAsync(settings, Ct);
         var loaded = await _store.LoadAsync(Ct);
 
         loaded.Should().BeEquivalentTo(settings);
+    }
+
+    [Fact]
+    public async Task LoadAsync_FileFromPhase1_GetsPhase2Defaults()
+    {
+        Directory.CreateDirectory(_paths.DataDirectory);
+        await File.WriteAllTextAsync(_paths.SettingsFile, """{ "theme": "Light", "projects": [ { "name": "x" }, null, { "repositoryPath": "C:\\no-name" } ] }""", Ct);
+
+        var settings = await _store.LoadAsync(Ct);
+
+        settings.QuickCapture.Should().Be(new QuickCaptureSettings());
+        settings.Projects.Should().Equal(new ProjectSettings("x", null));
     }
 
     [Fact]

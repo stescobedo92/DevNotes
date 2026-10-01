@@ -2,9 +2,34 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DevNotes.Desktop.ViewModels"
              xmlns:res="using:DevNotes.Desktop.Resources"
+             xmlns:conv="using:DevNotes.Desktop.Converters"
              x:Class="DevNotes.Desktop.Views.SidebarView"
              x:DataType="vm:MainWindowViewModel"
              AutomationProperties.Name="{x:Static res:Strings.A11y_Sidebar}">
+  <UserControl.Resources>
+    <!-- One row of the filter panel: a toggle with the value on the left and the count on the right. -->
+    <DataTemplate x:Key="FacetTemplate" x:DataType="vm:FacetItemViewModel">
+      <ToggleButton Classes="ghost wide facet"
+                    IsChecked="{Binding IsSelected}"
+                    AutomationProperties.Name="{Binding AccessibleName}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Ellipse Width="{DynamicResource ProjectDotSize}"
+                   Height="{DynamicResource ProjectDotSize}"
+                   Margin="{DynamicResource GapRight1}"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding IsProject}"
+                   Fill="{Binding Value, Converter={x:Static conv:NameToBrushConverter.Solid}}" />
+          <TextBlock Grid.Column="1" Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2"
+                     Classes="secondary small"
+                     Margin="{DynamicResource GapListIndent}"
+                     VerticalAlignment="Center"
+                     Text="{Binding Count}" />
+        </Grid>
+      </ToggleButton>
+    </DataTemplate>
+  </UserControl.Resources>
+
   <Border Classes="panel panelLeft">
     <DockPanel>
 
@@ -15,6 +40,13 @@
                 Content="{x:Static res:Strings.Sidebar_NewNote}"
                 AutomationProperties.AcceleratorKey="{Binding NewNoteShortcut}" />
         <Button Classes="ghost wide"
+                Command="{Binding QuickCaptureCommand}"
+                Content="{x:Static res:Strings.Sidebar_QuickCapture}"
+                AutomationProperties.AcceleratorKey="{Binding QuickCaptureShortcut}" />
+        <Button Classes="ghost wide"
+                Command="{Binding EditTemplatesCommand}"
+                Content="{x:Static res:Strings.Sidebar_Templates}" />
+        <Button Classes="ghost wide"
                 Command="{Binding OpenTrashCommand}"
                 Content="{x:Static res:Strings.Sidebar_Trash}" />
         <Button Classes="ghost wide"
@@ -23,35 +55,91 @@
         <Button Classes="ghost wide"
                 Command="{Binding AddVaultCommand}"
                 Content="{x:Static res:Strings.Sidebar_AddVault}" />
+        <Button Classes="ghost wide"
+                Command="{Binding OpenSettingsCommand}"
+                Content="{x:Static res:Strings.Sidebar_Settings}" />
       </StackPanel>
 
-      <TextBlock DockPanel.Dock="Top" Classes="sectionHeader" Text="{x:Static res:Strings.Sidebar_Vaults}" />
-
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <ItemsControl ItemsSource="{Binding Vaults}"
-                      Margin="{DynamicResource Inset1}"
-                      AutomationProperties.Name="{x:Static res:Strings.A11y_VaultList}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:VaultItemViewModel">
-              <Grid ColumnDefinitions="*,Auto">
-                <Button Classes="ghost wide"
-                        Classes.active="{Binding IsActive}"
-                        Command="{Binding $parent[UserControl].((vm:MainWindowViewModel)DataContext).SwitchVaultCommand}"
-                        CommandParameter="{Binding}"
-                        ToolTip.Tip="{Binding Path}">
-                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                </Button>
-                <Button Grid.Column="1"
-                        Classes="ghost"
-                        Command="{Binding $parent[UserControl].((vm:MainWindowViewModel)DataContext).RemoveVaultCommand}"
-                        CommandParameter="{Binding}"
-                        Content="✕"
-                        ToolTip.Tip="{x:Static res:Strings.Sidebar_RemoveVault}"
-                        AutomationProperties.Name="{x:Static res:Strings.Sidebar_RemoveVault}" />
-              </Grid>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <StackPanel>
+
+          <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Sidebar_Vaults}" />
+          <ItemsControl ItemsSource="{Binding Vaults}"
+                        Margin="{DynamicResource Inset1}"
+                        AutomationProperties.Name="{x:Static res:Strings.A11y_VaultList}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:VaultItemViewModel">
+                <Grid ColumnDefinitions="*,Auto">
+                  <Button Classes="ghost wide"
+                          Classes.active="{Binding IsActive}"
+                          Command="{Binding $parent[UserControl].((vm:MainWindowViewModel)DataContext).SwitchVaultCommand}"
+                          CommandParameter="{Binding}"
+                          ToolTip.Tip="{Binding Path}">
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  </Button>
+                  <Button Grid.Column="1"
+                          Classes="ghost"
+                          Command="{Binding $parent[UserControl].((vm:MainWindowViewModel)DataContext).RemoveVaultCommand}"
+                          CommandParameter="{Binding}"
+                          Content="✕"
+                          ToolTip.Tip="{x:Static res:Strings.Sidebar_RemoveVault}"
+                          AutomationProperties.Name="{x:Static res:Strings.Sidebar_RemoveVault}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- Filters: projects, tags and types with counts -->
+          <StackPanel x:Name="FilterPanel"
+                      DataContext="{Binding Filters}"
+                      x:DataType="vm:FilterPanelViewModel"
+                      IsVisible="{Binding $parent[UserControl].((vm:MainWindowViewModel)DataContext).HasVault}"
+                      AutomationProperties.Name="{x:Static res:Strings.A11y_FilterPanel}">
+
+            <DockPanel Margin="{DynamicResource GapAbove2}" IsVisible="{Binding HasActiveFilter}">
+              <Button x:Name="ClearFiltersButton"
+                      DockPanel.Dock="Right"
+                      Classes="link"
+                      Margin="{DynamicResource GapRight2}"
+                      Command="{Binding ClearCommand}"
+                      Content="{x:Static res:Strings.Sidebar_ClearFilters}" />
+              <TextBlock Classes="secondary small"
+                         VerticalAlignment="Center"
+                         Margin="{DynamicResource InsetSidebarItem}"
+                         Text="{Binding ActiveCountText}" />
+            </DockPanel>
+
+            <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Sidebar_Projects}" />
+            <TextBlock Classes="secondary small"
+                       Margin="{DynamicResource InsetSidebarItem}"
+                       IsVisible="{Binding !HasProjects}"
+                       Text="{x:Static res:Strings.Sidebar_NoProjects}" />
+            <ItemsControl x:Name="ProjectFacets"
+                          ItemsSource="{Binding Projects}"
+                          ItemTemplate="{StaticResource FacetTemplate}"
+                          Margin="{DynamicResource Inset1}"
+                          AutomationProperties.Name="{x:Static res:Strings.A11y_ProjectFilters}" />
+
+            <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Sidebar_Tags}" />
+            <TextBlock Classes="secondary small"
+                       Margin="{DynamicResource InsetSidebarItem}"
+                       IsVisible="{Binding !HasTags}"
+                       Text="{x:Static res:Strings.Sidebar_NoTags}" />
+            <ItemsControl x:Name="TagFacets"
+                          ItemsSource="{Binding Tags}"
+                          ItemTemplate="{StaticResource FacetTemplate}"
+                          Margin="{DynamicResource Inset1}"
+                          AutomationProperties.Name="{x:Static res:Strings.A11y_TagFilters}" />
+
+            <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Sidebar_Types}" />
+            <ItemsControl x:Name="TypeFacets"
+                          ItemsSource="{Binding Types}"
+                          ItemTemplate="{StaticResource FacetTemplate}"
+                          Margin="{DynamicResource Inset1}"
+                          AutomationProperties.Name="{x:Static res:Strings.A11y_TypeFilters}" />
+          </StackPanel>
+
+        </StackPanel>
       </ScrollViewer>
 
     </DockPanel>

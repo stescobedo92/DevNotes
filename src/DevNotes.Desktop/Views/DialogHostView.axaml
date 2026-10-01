@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:dialogs="using:DevNotes.Desktop.ViewModels.Dialogs"
-             xmlns:res="using:DevNotes.Desktop.Resources"
+              xmlns:res="using:DevNotes.Desktop.Resources"
              x:Class="DevNotes.Desktop.Views.DialogHostView"
              x:DataType="dialogs:DialogHostViewModel"
              IsVisible="{Binding IsOpen}">
@@ -62,6 +62,234 @@
       </StackPanel>
     </DataTemplate>
 
+    <DataTemplate DataType="dialogs:NewNoteDialogViewModel">
+      <StackPanel>
+        <TextBlock x:Name="NewNoteTitleLabel" Classes="secondary small" Margin="{DynamicResource GapBelow1}" Text="{x:Static res:Strings.Dialog_NewNote_Label}" />
+        <TextBox x:Name="NewNoteTitle"
+                 Text="{Binding TitleInput}"
+                 AutomationProperties.LabeledBy="{Binding #NewNoteTitleLabel}" />
+        <TextBlock Classes="error small"
+                   Margin="{DynamicResource GapAbove2}"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding HasError}"
+                   Text="{Binding Error}"
+                   AutomationProperties.LiveSetting="Assertive" />
+        <Grid ColumnDefinitions="*,*" Margin="{DynamicResource GapAbove3}">
+          <StackPanel Margin="{DynamicResource GapRight2}">
+            <TextBlock x:Name="NewNoteTemplateLabel" Classes="secondary small" Margin="{DynamicResource GapBelow1}" Text="{x:Static res:Strings.Dialog_NewNote_Template}" />
+            <ComboBox x:Name="NewNoteTemplate"
+                      HorizontalAlignment="Stretch"
+                      ItemsSource="{Binding Templates}"
+                      SelectedItem="{Binding SelectedTemplate}"
+                      DisplayMemberBinding="{Binding Label, x:DataType=dialogs:TemplateOption}"
+                      AutomationProperties.LabeledBy="{Binding #NewNoteTemplateLabel}" />
+          </StackPanel>
+          <StackPanel Grid.Column="1">
+            <TextBlock x:Name="NewNoteProjectLabel" Classes="secondary small" Margin="{DynamicResource GapBelow1}" Text="{x:Static res:Strings.Dialog_NewNote_Project}" />
+            <TextBox x:Name="NewNoteProject"
+                     Text="{Binding Project}"
+                     AutomationProperties.LabeledBy="{Binding #NewNoteProjectLabel}" />
+          </StackPanel>
+        </Grid>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{DynamicResource GapAbove4}">
+          <Button Margin="{DynamicResource GapRight2}"
+                  Command="{Binding CancelCommand}"
+                  Content="{x:Static res:Strings.Action_Cancel}" />
+          <Button Classes="primary"
+                  Command="{Binding ConfirmCommand}"
+                  Content="{x:Static res:Strings.Action_Create}" />
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="dialogs:TemplatesDialogViewModel">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Margin="{DynamicResource GapAbove3}">
+          <TextBlock Classes="secondary small" TextWrapping="Wrap" Margin="{DynamicResource GapBelow2}" Text="{Binding Hint}" />
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Button Margin="{DynamicResource GapRight2}"
+                      Command="{Binding ResetCommand}"
+                      Content="{Binding SelectedItem.ResetLabel, FallbackValue=''}"
+                      IsVisible="{Binding SelectedItem.CanReset, FallbackValue=False}" />
+              <Button Classes="primary"
+                      Margin="{DynamicResource GapRight2}"
+                      Command="{Binding SaveCommand}"
+                      Content="{x:Static res:Strings.Action_Save}" />
+              <Button x:Name="CloseButton"
+                      Command="{Binding CancelCommand}"
+                      Content="{x:Static res:Strings.Action_Close}" />
+            </StackPanel>
+            <Button Classes="ghost"
+                    Command="{Binding NewCommand}"
+                    Content="{x:Static res:Strings.Dialog_Templates_New}" />
+          </DockPanel>
+        </StackPanel>
+        <Grid ColumnDefinitions="200,*" MinHeight="240">
+          <ListBox x:Name="TemplateList"
+                   Classes="flat compact"
+                   ItemsSource="{Binding Items}"
+                   SelectedItem="{Binding SelectedItem}"
+                   AutomationProperties.Name="{x:Static res:Strings.Dialog_Templates_Title}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="dialogs:TemplateItemViewModel">
+                <StackPanel>
+                  <TextBlock Classes="strong" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="secondary small" Text="{Binding KindLabel}" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBox x:Name="TemplateEditor"
+                   Grid.Column="1"
+                   Classes="code"
+                   Margin="{DynamicResource GapListIndent}"
+                   AcceptsReturn="True"
+                   AcceptsTab="True"
+                   TextWrapping="NoWrap"
+                   VerticalContentAlignment="Top"
+                   IsEnabled="{Binding HasSelection}"
+                   Text="{Binding EditorText}"
+                   AutomationProperties.Name="{x:Static res:Strings.Dialog_Templates_Title}" />
+        </Grid>
+      </DockPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="dialogs:SettingsDialogViewModel">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="{DynamicResource GapAbove4}">
+          <Button x:Name="CloseButton"
+                  Classes="primary"
+                  Command="{Binding CancelCommand}"
+                  Content="{x:Static res:Strings.Action_Close}" />
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel>
+            <StackPanel.Styles>
+              <Style Selector="TextBlock.settingLabel">
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}" />
+                <Setter Property="Margin" Value="{DynamicResource GapBelow1}" />
+              </Style>
+              <Style Selector="StackPanel.setting">
+                <Setter Property="Margin" Value="{DynamicResource GapBelow3}" />
+              </Style>
+            </StackPanel.Styles>
+
+            <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Settings_Appearance}" />
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="{DynamicResource Inset1}">
+              <StackPanel Classes="setting" Margin="{DynamicResource GapRight2}">
+                <TextBlock x:Name="ThemeLabel" Classes="settingLabel" Text="{x:Static res:Strings.Settings_Theme}" />
+                <ComboBox x:Name="ThemeBox"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding ThemeChoices}"
+                          SelectedItem="{Binding Theme}"
+                          DisplayMemberBinding="{Binding Label, x:DataType=dialogs:SettingChoice}"
+                          AutomationProperties.LabeledBy="{Binding #ThemeLabel}" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Classes="setting">
+                <TextBlock x:Name="LanguageLabel" Classes="settingLabel" Text="{x:Static res:Strings.Settings_Language}" />
+                <ComboBox x:Name="LanguageBox"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding LanguageChoices}"
+                          SelectedItem="{Binding Language}"
+                          DisplayMemberBinding="{Binding Label, x:DataType=dialogs:SettingChoice}"
+                          AutomationProperties.LabeledBy="{Binding #LanguageLabel}" />
+                <TextBlock Classes="secondary small" TextWrapping="Wrap" Margin="{DynamicResource GapAbove1}" Text="{Binding RestartHint}" />
+              </StackPanel>
+              <StackPanel Grid.Row="1" Classes="setting" Margin="{DynamicResource GapRight2}">
+                <TextBlock x:Name="FontSizeLabel" Classes="settingLabel" Text="{x:Static res:Strings.Settings_FontSize}" />
+                <NumericUpDown x:Name="FontSizeBox"
+                               Minimum="10"
+                               Maximum="28"
+                               Increment="1"
+                               FormatString="0"
+                               Value="{Binding FontSize}"
+                               AutomationProperties.LabeledBy="{Binding #FontSizeLabel}" />
+              </StackPanel>
+              <StackPanel Grid.Row="1" Grid.Column="1" Classes="setting">
+                <TextBlock x:Name="DensityLabel" Classes="settingLabel" Text="{x:Static res:Strings.Settings_Density}" />
+                <ComboBox x:Name="DensityBox"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding DensityChoices}"
+                          SelectedItem="{Binding Density}"
+                          DisplayMemberBinding="{Binding Label, x:DataType=dialogs:SettingChoice}"
+                          AutomationProperties.LabeledBy="{Binding #DensityLabel}" />
+              </StackPanel>
+            </Grid>
+            <CheckBox Margin="{DynamicResource Inset1}" IsChecked="{Binding ReduceMotion}" Content="{x:Static res:Strings.Settings_ReduceMotion}" />
+
+            <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Settings_QuickCapture}" />
+            <StackPanel Margin="{DynamicResource Inset1}">
+              <CheckBox x:Name="GlobalHotkeyBox" IsChecked="{Binding GlobalHotkeyEnabled}" Content="{x:Static res:Strings.Settings_GlobalHotkeyEnabled}" />
+              <StackPanel Classes="setting" Margin="{DynamicResource GapAbove2}">
+                <TextBlock x:Name="HotkeyLabel" Classes="settingLabel" Text="{x:Static res:Strings.Settings_GlobalHotkey}" />
+                <TextBox x:Name="HotkeyBox"
+                         Text="{Binding Hotkey}"
+                         LostFocus="OnHotkeyLostFocus"
+                         AutomationProperties.LabeledBy="{Binding #HotkeyLabel}" />
+                <TextBlock Classes="error small"
+                           Margin="{DynamicResource GapAbove1}"
+                           IsVisible="{Binding HasHotkeyError}"
+                           Text="{Binding HotkeyError}"
+                           AutomationProperties.LiveSetting="Assertive" />
+                <TextBlock Classes="secondary small" TextWrapping="Wrap" Margin="{DynamicResource GapAbove1}" Text="{x:Static res:Strings.Settings_HotkeyHint}" />
+                <TextBlock x:Name="HotkeyStatus" Classes="small" TextWrapping="Wrap" Margin="{DynamicResource GapAbove1}" Text="{Binding HotkeyStatusText}" />
+                <Button Classes="ghost"
+                        HorizontalAlignment="Left"
+                        Margin="{DynamicResource GapAbove1}"
+                        IsVisible="{Binding CanRequestPermission}"
+                        Command="{Binding RequestPermissionCommand}"
+                        Content="{x:Static res:Strings.Settings_RequestAccessibility}" />
+              </StackPanel>
+            </StackPanel>
+
+            <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Settings_Projects}" />
+            <StackPanel Margin="{DynamicResource Inset1}">
+              <TextBlock Classes="secondary small" TextWrapping="Wrap" Margin="{DynamicResource GapBelow2}" Text="{x:Static res:Strings.Settings_ProjectsHint}" />
+              <TextBlock Classes="secondary small" IsVisible="{Binding !HasProjects}" Text="{x:Static res:Strings.Settings_NoProjects}" />
+              <ItemsControl x:Name="ProjectRows" ItemsSource="{Binding Projects}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="dialogs:ProjectSettingViewModel">
+                    <Grid ColumnDefinitions="140,*,Auto,Auto" Margin="{DynamicResource GapBelow2}">
+                      <TextBlock Classes="strong" VerticalAlignment="Center" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="1"
+                                 Classes="secondary small"
+                                 VerticalAlignment="Center"
+                                 Margin="{DynamicResource GapRight2}"
+                                 TextTrimming="CharacterEllipsis"
+                                 Text="{Binding RepositoryPath, FallbackValue=''}"
+                                 ToolTip.Tip="{Binding RepositoryPath}" />
+                      <Button Grid.Column="2"
+                              Classes="ghost"
+                              Margin="{DynamicResource GapRight2}"
+                              Command="{Binding $parent[ItemsControl].((dialogs:SettingsDialogViewModel)DataContext).BrowseRepositoryCommand}"
+                              CommandParameter="{Binding}"
+                              Content="{x:Static res:Strings.Settings_Browse}" />
+                      <Button Grid.Column="3"
+                              Classes="ghost"
+                              IsVisible="{Binding HasRepositoryPath}"
+                              Command="{Binding $parent[ItemsControl].((dialogs:SettingsDialogViewModel)DataContext).ClearRepositoryCommand}"
+                              CommandParameter="{Binding}"
+                              Content="{x:Static res:Strings.Settings_ClearPath}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <TextBlock Classes="sectionHeader" Text="{x:Static res:Strings.Settings_Maintenance}" IsVisible="{Binding CanReindex}" />
+            <Button Classes="ghost"
+                    HorizontalAlignment="Left"
+                    Margin="{DynamicResource Inset1}"
+                    IsVisible="{Binding CanReindex}"
+                    Command="{Binding RunReindexCommand}"
+                    Content="{x:Static res:Strings.Command_Reindex}" />
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </DataTemplate>
+
     <DataTemplate DataType="dialogs:TrashDialogViewModel">
       <DockPanel>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="{DynamicResource GapAbove4}">
@@ -110,13 +338,25 @@
 
   </UserControl.DataTemplates>
 
+  <UserControl.Styles>
+    <!-- Sizes live in styles so the wide variant can override them (local values would win over styles). -->
+    <Style Selector="Border#Card">
+      <Setter Property="Width" Value="{DynamicResource DialogWidth}" />
+      <Setter Property="MaxHeight" Value="{DynamicResource OverlayMaxHeight}" />
+    </Style>
+    <Style Selector="Border#Card.wide">
+      <Setter Property="Width" Value="{DynamicResource DialogWideWidth}" />
+      <Setter Property="MaxHeight" Value="{DynamicResource DialogWideMaxHeight}" />
+    </Style>
+  </UserControl.Styles>
+
   <Panel>
     <Border Classes="scrim" />
 
     <Border x:Name="Card"
             Classes="card"
-            Width="{DynamicResource DialogWidth}"
-            MaxHeight="{DynamicResource OverlayMaxHeight}"
+            Classes.wide="{Binding Current.IsWide, FallbackValue=False}"
+            Focusable="True"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Padding="{DynamicResource Inset6}"

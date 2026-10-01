@@ -1,4 +1,6 @@
 using DevNotes.Application.Search;
+using DevNotes.Domain.Common;
+using DevNotes.Domain.Notes;
 
 namespace DevNotes.Application.Settings;
 
@@ -24,6 +26,22 @@ public enum UiDensity
 
 /// <summary>A registered vault as persisted in the settings file.</summary>
 public sealed record VaultSettings(string Id, string Name, string Path);
+
+/// <summary>What the user configured for one project (the <c>project:</c> value of the notes).</summary>
+/// <param name="Name">Project name as written in the notes.</param>
+/// <param name="RepositoryPath">Absolute path of the Git repository of the project, used to detect the active project.</param>
+public sealed record ProjectSettings(string Name, string? RepositoryPath);
+
+public sealed record QuickCaptureSettings
+{
+    /// <summary>Whether the system-wide shortcut is registered at start-up.</summary>
+    public bool GlobalHotkeyEnabled { get; init; } = true;
+
+    /// <summary>The shortcut, in the text form <see cref="HotkeyGesture"/> parses.</summary>
+    public string Hotkey { get; init; } = HotkeyGesture.DefaultText;
+
+    public HotkeyGesture Gesture => HotkeyGesture.TryParse(Hotkey, out var gesture) ? gesture : HotkeyGesture.Default;
+}
 
 public sealed record LayoutSettings
 {
@@ -82,6 +100,10 @@ public sealed record AppSettings
 
     public LayoutSettings Layout { get; init; } = new();
 
+    public IReadOnlyList<ProjectSettings> Projects { get; init; } = [];
+
+    public QuickCaptureSettings QuickCapture { get; init; } = new();
+
     /// <summary>Returns a copy with every value forced into its valid range (settings files can be hand-edited).</summary>
     public AppSettings Normalize() => this with
     {
@@ -93,7 +115,54 @@ public sealed record AppSettings
         SortOrder = Enum.IsDefined(SortOrder) ? SortOrder : NoteSortOrder.UpdatedDescending,
         FontSize = ClampOrDefault(FontSize, MinFontSize, MaxFontSize, DefaultFontSize),
         Layout = NormalizeLayout(Layout ?? new LayoutSettings()),
+        Projects = NormalizeProjects(Projects ?? []),
+        QuickCapture = NormalizeQuickCapture(QuickCapture ?? new QuickCaptureSettings()),
     };
+
+    /// <summary>The settings of a project, by name (case and accents ignored), or null.</summary>
+    public ProjectSettings? FindProject(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : Projects.FirstOrDefault(project => TextKey.Of(project.Name) == TextKey.Of(name.Trim()));
+
+    /// <summary>Returns a copy where the project has the given repository path (added when new, removed when the path is null).</summary>
+    public AppSettings WithProjectRepository(string name, string? repositoryPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var key = TextKey.Of(name.Trim());
+        var remaining = Projects.Where(project => TextKey.Of(project.Name) != key).ToList();
+        if (!string.IsNullOrWhiteSpace(repositoryPath))
+        {
+            remaining.Add(new ProjectSettings(name.Trim(), repositoryPath.Trim()));
+        }
+
+        return this with { Projects = remaining };
+    }
+
+    private static IReadOnlyList<ProjectSettings> NormalizeProjects(IReadOnlyList<ProjectSettings> projects)
+    {
+        var result = new List<ProjectSettings>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var project in projects)
+        {
+            if (project is null || !NoteTitle.TryNormalize(project.Name, out var name) || !seen.Add(TextKey.Of(name)))
+            {
+                continue;
+            }
+
+            var path = project.RepositoryPath?.Trim();
+            result.Add(new ProjectSettings(name, string.IsNullOrEmpty(path) || !System.IO.Path.IsPathFullyQualified(path) ? null : path));
+        }
+
+        // Unchanged content keeps the same instance: "no effective change" is detected by record equality.
+        return result.SequenceEqual(projects) ? projects : result;
+    }
+
+    private static QuickCaptureSettings NormalizeQuickCapture(QuickCaptureSettings quickCapture) =>
+        quickCapture with
+        {
+            Hotkey = HotkeyGesture.TryParse(quickCapture.Hotkey, out var gesture) ? gesture.ToString() : HotkeyGesture.DefaultText,
+        };
 
     private static LayoutSettings NormalizeLayout(LayoutSettings layout)
     {

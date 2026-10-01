@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DevNotes.Desktop.ViewModels"
+        xmlns:res="using:DevNotes.Desktop.Resources"
+        x:Class="DevNotes.Desktop.Views.QuickCaptureWindow"
+        x:DataType="vm:QuickCaptureViewModel"
+        Title="{x:Static res:Strings.Capture_Title}"
+        Width="560"
+        Height="380"
+        MinWidth="360"
+        MinHeight="240"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen">
+  <DockPanel Margin="{DynamicResource Inset4}">
+
+    <StackPanel DockPanel.Dock="Bottom" Margin="{DynamicResource GapAbove3}">
+      <TextBlock Classes="error small"
+                 Margin="{DynamicResource GapBelow2}"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding HasError}"
+                 Text="{Binding Error}"
+                 AutomationProperties.LiveSetting="Assertive" />
+      <DockPanel>
+        <Button x:Name="SaveButton"
+                DockPanel.Dock="Right"
+                Classes="primary"
+                Command="{Binding SaveCommand}"
+                Content="{x:Static res:Strings.Capture_Save}" />
+        <TextBlock Classes="secondary small"
+                   VerticalAlignment="Center"
+                   TextWrapping="Wrap"
+                   Text="{x:Static res:Strings.Capture_Hint}" />
+      </DockPanel>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,Auto" DockPanel.Dock="Top" Margin="{DynamicResource GapBelow2}">
+      <TextBox x:Name="TitleBox"
+               Text="{Binding Title}"
+               Watermark="{x:Static res:Strings.Capture_TitlePlaceholder}"
+               AutomationProperties.Name="{x:Static res:Strings.A11y_CaptureTitle}" />
+      <TextBox x:Name="ProjectBox"
+               Grid.Column="1"
+               Width="160"
+               Margin="{DynamicResource GapListIndent}"
+               Text="{Binding Project}"
+               Watermark="{x:Static res:Strings.Capture_ProjectPlaceholder}"
+               AutomationProperties.Name="{x:Static res:Strings.A11y_CaptureProject}" />
+    </Grid>
+
+    <TextBox x:Name="BodyBox"
+             AcceptsReturn="True"
+             AcceptsTab="True"
+             TextWrapping="Wrap"
+             VerticalContentAlignment="Top"
+             Text="{Binding Text}"
+             Watermark="{x:Static res:Strings.Capture_TextPlaceholder}"
+             AutomationProperties.Name="{x:Static res:Strings.A11y_CaptureText}" />
+
+  </DockPanel>
+</Window>

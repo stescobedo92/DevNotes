@@ -1,5 +1,6 @@
 using DevNotes.Application.Abstractions;
 using DevNotes.Application.Indexing;
+using DevNotes.Application.Search;
 using DevNotes.Application.Tests.Fakes;
 using DevNotes.Application.Vaults;
 using DevNotes.Domain.Notes;
@@ -318,7 +319,7 @@ public sealed class VaultSessionTests : IAsyncDisposable
 
         _index.Find(created.Path.Value).Should().NotBeNull();
         Changes().Should().ContainSingle().Which.Source.Should().Be(NotesChangeSource.Local);
-        var result = await _session.Queries.QueryAsync("hello", default, 10, Ct);
+        var result = await _session.Queries.QueryAsync("hello", NoteFilter.Empty, default, 10, Ct);
         result.Entries.Should().ContainSingle();
     }
 
@@ -358,8 +359,10 @@ public sealed class VaultSessionTests : IAsyncDisposable
         var indexes = new RecordingIndexFactory();
         var watchers = Substitute.For<IVaultWatcherFactory>();
         watchers.Create(vault.RootPath).Returns(new ManualVaultWatcher());
+        var templates = Substitute.For<ITemplateStoreFactory>();
+        templates.Create(vault.RootPath).Returns(new InMemoryTemplateStore());
         var factory = new VaultSessionFactory(
-            fileStores, indexes, watchers, new SequentialNoteIdGenerator(), _time, Options.Create(new IndexingOptions()), NullLoggerFactory.Instance);
+            fileStores, indexes, watchers, templates, new SequentialNoteIdGenerator(), _time, Options.Create(new IndexingOptions()), NullLoggerFactory.Instance);
 
         await using var session = factory.Create(vault);
 
@@ -375,7 +378,7 @@ public sealed class VaultSessionTests : IAsyncDisposable
         var watchers = Substitute.For<IVaultWatcherFactory>();
         watchers.Create(Arg.Any<string>()).Returns(_ => throw new DirectoryNotFoundException("vault folder is gone"));
         var factory = new VaultSessionFactory(
-            Substitute.For<INoteFileStoreFactory>(), indexes, watchers, new SequentialNoteIdGenerator(), _time,
+            Substitute.For<INoteFileStoreFactory>(), indexes, watchers, Substitute.For<ITemplateStoreFactory>(), new SequentialNoteIdGenerator(), _time,
             Options.Create(new IndexingOptions()), NullLoggerFactory.Instance);
 
         FluentActions.Invoking(() => factory.Create(vault)).Should().Throw<DirectoryNotFoundException>();
@@ -389,6 +392,7 @@ public sealed class VaultSessionTests : IAsyncDisposable
             _files,
             _index,
             _watcher,
+            new InMemoryTemplateStore(),
             new SequentialNoteIdGenerator(),
             _time,
             options,

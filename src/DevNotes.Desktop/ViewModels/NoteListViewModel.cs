@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using DevNotes.Application.Search;
 using DevNotes.Application.Vaults;
 using DevNotes.Desktop.Resources;
@@ -115,11 +116,15 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
         ];
         SelectedSort = SortOptions[0];
         SearchText = string.Empty;
+        Filter = NoteFilter.Empty;
         Items = [];
     }
 
     /// <summary>Asks the shell to open a note. Returns false when the note could not be opened (e.g. unsaved changes).</summary>
     public Func<NotePath, Task<bool>>? OpenRequested { get; set; }
+
+    /// <summary>Asks the shell to drop the sidebar selection (the "clear filters" link of the empty state).</summary>
+    public Action? ClearFilterRequested { get; set; }
 
     public IReadOnlyList<NoteSortOption> SortOptions { get; }
 
@@ -128,6 +133,11 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial string SearchText { get; set; }
+
+    /// <summary>Structured filter (the sidebar selection) combined with whatever the search text says.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFilter))]
+    public partial NoteFilter Filter { get; set; }
 
     [ObservableProperty]
     public partial NoteSortOption SelectedSort { get; set; }
@@ -158,6 +168,8 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
     public bool HasNoResults => State == NoteListState.NoResults;
 
     public bool IsNoVault => State == NoteListState.NoVault;
+
+    public bool HasFilter => !Filter.IsEmpty;
 
     public NoteSortOrder SortOrder
     {
@@ -244,7 +256,7 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
         try
         {
             var limit = string.IsNullOrWhiteSpace(SearchText) ? ResultLimit : SearchResultLimit;
-            var result = await session.Queries.QueryAsync(SearchText, SelectedSort.Order, limit, token);
+            var result = await session.Queries.QueryAsync(SearchText, Filter, SelectedSort.Order, limit, token);
             if (version != Volatile.Read(ref _queryVersion))
             {
                 return; // A newer query superseded this one.
@@ -298,7 +310,12 @@ public sealed partial class NoteListViewModel : ObservableObject, IDisposable
         _queryCancellation = null;
     }
 
+    [RelayCommand]
+    private void ClearFilter() => ClearFilterRequested?.Invoke();
+
     partial void OnSearchTextChanged(string value) => _ = RefreshAsync();
+
+    partial void OnFilterChanged(NoteFilter value) => _ = RefreshAsync();
 
     partial void OnSelectedSortChanged(NoteSortOption value)
     {

@@ -1,5 +1,6 @@
 using DevNotes.Application.Abstractions;
 using DevNotes.Application.Settings;
+using DevNotes.Infrastructure.Git;
 using DevNotes.Infrastructure.Indexing;
 using DevNotes.Infrastructure.Logging;
 using DevNotes.Infrastructure.Settings;
@@ -25,6 +26,8 @@ public static class DependencyInjection
         services.TryAddSingleton<INoteFileStoreFactory, VaultFileStoreFactory>();
         services.TryAddSingleton<INoteIndexFactory, SqliteNoteIndexFactory>();
         services.TryAddSingleton<IVaultWatcherFactory, FileSystemVaultWatcherFactory>();
+        services.TryAddSingleton<ITemplateStoreFactory, VaultTemplateStoreFactory>();
+        services.TryAddSingleton<IGitRepositoryLocator, GitRepositoryLocator>();
         return services;
     }
 

@@ -1,5 +1,6 @@
 using DevNotes.Application.Abstractions;
 using DevNotes.Application.Search;
+using DevNotes.Domain.Common;
 using DevNotes.Domain.Notes;
 
 namespace DevNotes.Application.Tests.Fakes;
@@ -141,30 +142,43 @@ public sealed class InMemoryNoteIndex : INoteIndex
     {
         lock (_gate)
         {
-            IEnumerable<IndexedNote> ordered = query.Sort == NoteSortOrder.TitleAscending
-                ? _notes.OrderBy(note => note.Metadata.Title, StringComparer.OrdinalIgnoreCase)
-                : _notes.OrderByDescending(note => note.FileLastWriteUtc);
-            IReadOnlyList<NoteSummary> result = [.. ordered.Take(query.Limit).Select(ToSummary)];
+            IReadOnlyList<NoteSummary> result = [.. Order(_notes, query.Sort).Take(query.Limit).Select(ToSummary)];
             return Task.FromResult(result);
         }
     }
 
     public Task<IReadOnlyList<SearchHit>> SearchAsync(SearchQuery query, CancellationToken cancellationToken)
     {
-        // The fake only needs to prove that the query reached the index; matching is a plain "contains".
-        var needle = (query.Query.Match ?? string.Empty).Replace("\"", string.Empty, StringComparison.Ordinal).TrimEnd('*');
+        // The fake only needs to prove that the query reached the index: matching is a plain "contains".
+        var needle = Needle(query.Query.Match);
+        var excluded = query.Query.Exclude?.Split(" OR ").Select(term => Needle(term)!).ToList() ?? [];
         lock (_gate)
         {
-            IReadOnlyList<SearchHit> hits = [.. _notes
-                .Where(note => note.Body.Contains(needle, StringComparison.OrdinalIgnoreCase)
-                    || note.Metadata.Title.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            var matching = _notes
+                .Where(note => needle is null || Contains(note, needle))
+                .Where(note => !excluded.Any(term => Contains(note, term)))
+                .Where(note => Matches(note, query.Filter));
+            IReadOnlyList<SearchHit> hits = [.. Order(matching, query.Sort)
                 .Take(query.Limit)
-                .Select(note => new SearchHit(
-                    ToSummary(note),
-                    [new SnippetSegment(note.Metadata.Title, IsMatch: false)],
-                    [new SnippetSegment(needle, IsMatch: true)],
-                    Score: -1))];
+                .Select(note => needle is null
+                    ? new SearchHit(ToSummary(note), [], [], 0)
+                    : new SearchHit(
+                        ToSummary(note),
+                        [new SnippetSegment(note.Metadata.Title, IsMatch: false)],
+                        [new SnippetSegment(needle, IsMatch: true)],
+                        Score: -1))];
             return Task.FromResult(hits);
+        }
+    }
+
+    public Task<NoteFacets> GetFacetsAsync(CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult(new NoteFacets(
+                Count(_notes.Where(note => note.Metadata.Project is not null).Select(note => note.Metadata.Project!)),
+                Count(_notes.SelectMany(note => note.Metadata.Tags).Select(tag => tag.Value)),
+                Count(_notes.Select(note => note.Metadata.Type.ToKey()))));
         }
     }
 
@@ -172,6 +186,64 @@ public sealed class InMemoryNoteIndex : INoteIndex
     {
         IsDisposed = true;
         return ValueTask.CompletedTask;
+    }
+
+    private static IReadOnlyList<FacetCount> Count(IEnumerable<string> values) =>
+        [.. values
+            .GroupBy(value => value, StringComparer.Ordinal)
+            .Select(group => new FacetCount(group.Key, group.Count()))
+            .OrderByDescending(facet => facet.Count)
+            .ThenBy(facet => facet.Value, StringComparer.Ordinal)];
+
+    private static IEnumerable<IndexedNote> Order(IEnumerable<IndexedNote> notes, NoteSortOrder sort) =>
+        sort == NoteSortOrder.TitleAscending
+            ? notes.OrderBy(note => note.Metadata.Title, StringComparer.OrdinalIgnoreCase)
+            : notes.OrderByDescending(note => note.FileLastWriteUtc);
+
+    private static string? Needle(string? match) =>
+        match?.Replace("\"", string.Empty, StringComparison.Ordinal).TrimEnd('*').Trim();
+
+    private static bool Contains(IndexedNote note, string needle) =>
+        note.Body.Contains(needle, StringComparison.OrdinalIgnoreCase)
+        || note.Metadata.Title.Contains(needle, StringComparison.OrdinalIgnoreCase);
+
+    private static bool Matches(IndexedNote note, NoteFilter filter)
+    {
+        var metadata = note.Metadata;
+        if (filter.Projects.Count > 0
+            && (metadata.Project is null || !filter.Projects.Any(project => TextKey.Of(project) == TextKey.Of(metadata.Project))))
+        {
+            return false;
+        }
+
+        if (filter.Tags.Any(tag => !metadata.Tags.Contains(tag)))
+        {
+            return false;
+        }
+
+        if (filter.Types.Count > 0 && !filter.Types.Contains(metadata.Type))
+        {
+            return false;
+        }
+
+        if (filter.Commits.Count > 0
+            && !filter.Commits.Any(commit => metadata.Links.Commits.Any(known =>
+                known.StartsWith(commit, StringComparison.OrdinalIgnoreCase) || commit.StartsWith(known, StringComparison.OrdinalIgnoreCase))))
+        {
+            return false;
+        }
+
+        if (filter.Tickets.Count > 0 && !filter.Tickets.Any(ticket => metadata.Links.Tickets.Contains(ticket, StringComparer.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        if (!filter.Created.IsEmpty && (metadata.Created is not { } created || !filter.Created.Contains(created)))
+        {
+            return false;
+        }
+
+        return filter.Updated.IsEmpty || (metadata.Updated is { } updated && filter.Updated.Contains(updated));
     }
 
     private static NoteSummary ToSummary(IndexedNote note) => new(
