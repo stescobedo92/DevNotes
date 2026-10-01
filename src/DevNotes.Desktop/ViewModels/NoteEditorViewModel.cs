@@ -731,7 +731,16 @@ public sealed partial class NoteEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void ApplyDerived(NoteDocument document, string text) => ApplyDerived(document, BuildOutline(document, text));
+    /// <summary>
+    /// Applies an authoritative parse (a loaded or just-saved note). The version bump discards any
+    /// derive still running in the background on an older text, which would otherwise overwrite
+    /// this metadata with a stale parse (for example one without the id the save stamped).
+    /// </summary>
+    private void ApplyDerived(NoteDocument document, string text)
+    {
+        _derivedVersion++;
+        ApplyDerived(document, BuildOutline(document, text));
+    }
 
     private void ApplyDerived(NoteDocument document, IReadOnlyList<OutlineItemViewModel> outline)
     {

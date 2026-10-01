@@ -27,6 +27,7 @@ public sealed class NoteEditorViewModelTests : IDisposable
     private readonly FakeClipboard _clipboard = new();
     private readonly FakeLinkOpener _links = new();
     private readonly FakeThemeService _theme = new();
+    private readonly ImmediateUiDispatcher _dispatcher = new();
     private readonly NoteEditorViewModel _editor;
 
     public NoteEditorViewModelTests()
@@ -34,7 +35,7 @@ public sealed class NoteEditorViewModelTests : IDisposable
         _time.SetLocalTimeZone(TimeZoneInfo.Utc);
         _session.Notes.Returns(_notes);
         _editor = new NoteEditorViewModel(
-            new ImmediateUiDispatcher(),
+            _dispatcher,
             _notifications,
             _clipboard,
             _links,
@@ -545,6 +546,22 @@ public sealed class NoteEditorViewModelTests : IDisposable
 
         _editor.Outline[2].Should().Be(new OutlineItemViewModel(3, "Tres", 12));
         _editor.PreviewMarkdown.Should().EndWith("### Tres\n");
+    }
+
+    [Fact]
+    public async Task DerivedState_OfTextThatWasReplaced_NeverOverwritesTheLoadedNote()
+    {
+        await OpenNoteAsync();
+
+        // Long enough for its parse to be still running in the background when the disk version is loaded.
+        _editor.Text = NoteText + string.Concat(Enumerable.Repeat("\n### Más\n\ntexto\n", 50_000));
+        _time.Advance(TimeSpan.FromMilliseconds(150));
+        await _editor.LoadDiskCommand.ExecuteAsync(null);
+        await _dispatcher.WhenIdleAsync();
+
+        _editor.Text.Should().Be(NoteText);
+        _editor.Outline.Should().HaveCount(2, "the parse of the dropped text finished after the note was loaded");
+        _editor.PreviewMarkdown.Should().Be("\n# Uno\n\ntexto\n\n## Dos\n");
     }
 
     [Fact]
