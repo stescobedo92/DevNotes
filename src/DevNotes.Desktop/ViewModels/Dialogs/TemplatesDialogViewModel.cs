@@ -111,12 +111,15 @@ public sealed partial class TemplatesDialogViewModel : DialogViewModel
             return Task.FromResult(true);
         }
 
-        return _dialogs.ConfirmAsync(
+        return ConfirmDiscardAsync(item);
+    }
+
+    private Task<bool> ConfirmDiscardAsync(TemplateItemViewModel item) =>
+        _dialogs.ConfirmAsync(
             Strings.Dialog_Templates_Title,
             ErrorMessages.Format(Strings.Dialog_Templates_DiscardConfirm, item.Label),
             Strings.Conflict_Discard,
             isDestructive: true);
-    }
 
     partial void OnSelectedItemChanged(TemplateItemViewModel? oldValue, TemplateItemViewModel? newValue)
     {
@@ -136,11 +139,7 @@ public sealed partial class TemplatesDialogViewModel : DialogViewModel
 
     private async Task ConfirmSelectionChangeAsync(TemplateItemViewModel previous, TemplateItemViewModel? next)
     {
-        var discard = await _dialogs.ConfirmAsync(
-            Strings.Dialog_Templates_Title,
-            ErrorMessages.Format(Strings.Dialog_Templates_DiscardConfirm, previous.Label),
-            Strings.Conflict_Discard,
-            isDestructive: true);
+        var discard = await ConfirmDiscardAsync(previous);
 
         _revertingSelection = true;
         try
@@ -227,6 +226,14 @@ public sealed partial class TemplatesDialogViewModel : DialogViewModel
     [RelayCommand(CanExecute = nameof(CanCreate))]
     private async Task NewAsync()
     {
+        // The new template becomes the selection, so unsaved edits are settled first: refusing to
+        // drop them cancels the whole thing before anything is written to the vault.
+        var edited = IsDirty ? SelectedItem : null;
+        if (edited is not null && !await ConfirmDiscardAsync(edited))
+        {
+            return;
+        }
+
         var name = await _dialogs.PromptAsync(
             Strings.Dialog_Templates_New,
             Strings.Dialog_Templates_NewLabel,
@@ -246,6 +253,12 @@ public sealed partial class TemplatesDialogViewModel : DialogViewModel
             var saved = await _templates.SaveAsync(key, seed, CancellationToken.None);
             var item = new TemplateItemViewModel(saved);
             Items.Add(item);
+            if (edited is not null && ReferenceEquals(SelectedItem, edited))
+            {
+                // Already confirmed above; the edits survived until the template existed (a cancelled prompt keeps them).
+                EditorText = edited.Template.Text;
+            }
+
             SelectedItem = item;
         });
     }

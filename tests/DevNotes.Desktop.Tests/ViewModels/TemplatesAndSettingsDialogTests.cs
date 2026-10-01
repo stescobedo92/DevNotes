@@ -100,6 +100,61 @@ public sealed class TemplatesAndSettingsDialogTests
     }
 
     [AvaloniaFact]
+    public async Task Templates_NewWithUnsavedEdits_AsksBeforeAnythingIsWritten()
+    {
+        await using var harness = await DesktopHarness.StartAsync(new AvaloniaUiDispatcher(), seed: SampleVault.Seed);
+        var shell = harness.Shell;
+        var opening = shell.EditTemplatesCommand.ExecuteAsync(null);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is TemplatesDialogViewModel, "the templates dialog");
+        var dialog = (TemplatesDialogViewModel)shell.Dialogs.Current!;
+        var original = dialog.EditorText;
+        dialog.EditorText += "\n## Sin guardar\n";
+
+        // Refusing to drop the edits cancels the creation: no name is asked and no file appears.
+        var refused = dialog.NewCommand.ExecuteAsync(null);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is ConfirmDialogViewModel, "the discard confirmation");
+        shell.Dialogs.CancelCurrent();
+        await refused;
+
+        ReferenceEquals(shell.Dialogs.Current, dialog).Should().BeTrue();
+        dialog.Items.Should().HaveCount(6);
+        dialog.EditorText.Should().EndWith("## Sin guardar\n");
+        var templatesFolder = harness.VaultFolder.Combine(".devnotes", "templates");
+        (Directory.Exists(templatesFolder) ? Directory.GetFiles(templatesFolder) : []).Should().BeEmpty();
+
+        // Accepting and then cancelling the name still keeps the edits: nothing was created.
+        var cancelled = dialog.NewCommand.ExecuteAsync(null);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is ConfirmDialogViewModel, "the discard confirmation");
+        ((ConfirmDialogViewModel)shell.Dialogs.Current!).ConfirmCommand.Execute(null);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is PromptDialogViewModel, "the name prompt");
+        shell.Dialogs.CancelCurrent();
+        await cancelled;
+
+        dialog.EditorText.Should().EndWith("## Sin guardar\n");
+
+        // Accepting and naming it creates the template and moves to it without asking again.
+        var creating = dialog.NewCommand.ExecuteAsync(null);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is ConfirmDialogViewModel, "the discard confirmation");
+        ((ConfirmDialogViewModel)shell.Dialogs.Current!).ConfirmCommand.Execute(null);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is PromptDialogViewModel, "the name prompt");
+        var prompt = (PromptDialogViewModel)shell.Dialogs.Current!;
+        prompt.Value = "Retro";
+        prompt.ConfirmCommand.Execute(null);
+        await creating;
+
+        ReferenceEquals(shell.Dialogs.Current, dialog).Should().BeTrue("no second confirmation is shown");
+        dialog.SelectedItem!.Key.Should().Be("retro");
+        dialog.IsDirty.Should().BeFalse();
+        harness.VaultFolder.Exists(".devnotes/templates/retro.md").Should().BeTrue();
+        harness.VaultFolder.Exists(".devnotes/templates/note.md").Should().BeFalse("the dropped edits were never saved");
+        dialog.SelectedItem = dialog.Items.Single(item => item.Key == "note");
+        dialog.EditorText.Should().Be(original);
+
+        dialog.Cancel();
+        await opening;
+    }
+
+    [AvaloniaFact]
     public async Task Templates_EscapeAndShutdown_AskBeforeDroppingUnsavedEdits()
     {
         await using var harness = await DesktopHarness.StartAsync(new AvaloniaUiDispatcher(), seed: SampleVault.Seed);
