@@ -25,19 +25,29 @@ public sealed partial class QuickCaptureViewModel : ObservableObject, IDisposabl
     private readonly INotificationService _notifications;
     private readonly IQuickCaptureDraftStore _drafts;
     private readonly TimeProvider _timeProvider;
+    private readonly IUiDispatcher _dispatcher;
     private readonly ITimer _draftTimer;
     private bool _draftLoaded;
     private bool _applyingDraft;
+    private bool _disposed;
 
-    public QuickCaptureViewModel(IVaultSessionManager sessions, INotificationService notifications, IQuickCaptureDraftStore drafts, TimeProvider timeProvider)
+    public QuickCaptureViewModel(
+        IVaultSessionManager sessions,
+        INotificationService notifications,
+        IQuickCaptureDraftStore drafts,
+        TimeProvider timeProvider,
+        IUiDispatcher dispatcher)
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
         _drafts = drafts ?? throw new ArgumentNullException(nameof(drafts));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
 
-        // Before the properties: their setters schedule a draft write through this timer.
-        _draftTimer = timeProvider.CreateTimer(_ => PersistDraft(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        // Before the properties: their setters schedule a draft write through this timer. It fires on
+        // a timer thread and only asks for a turn on the UI thread: written from there, a draft could
+        // land on disk after a save had cleared it and come back as if it had never been saved.
+        _draftTimer = timeProvider.CreateTimer(_ => _dispatcher.Post(PersistScheduledDraft), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _applyingDraft = true;
         Title = string.Empty;
         Text = string.Empty;
@@ -107,7 +117,11 @@ public sealed partial class QuickCaptureViewModel : ObservableObject, IDisposabl
         _drafts.Save(new CaptureDraft(Title, Text, Project));
     }
 
-    public void Dispose() => _draftTimer.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        _draftTimer.Dispose();
+    }
 
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
@@ -192,6 +206,15 @@ public sealed partial class QuickCaptureViewModel : ObservableObject, IDisposabl
         if (!_applyingDraft)
         {
             _draftTimer.Change(DraftDelay, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    /// <summary>The timer's turn on the UI thread; it may arrive after the window is gone (shutdown stores the draft itself).</summary>
+    private void PersistScheduledDraft()
+    {
+        if (!_disposed)
+        {
+            PersistDraft();
         }
     }
 

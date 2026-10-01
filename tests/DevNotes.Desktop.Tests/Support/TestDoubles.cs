@@ -7,11 +7,51 @@ namespace DevNotes.Desktop.Tests.Support;
 /// <summary>Runs everything inline: for view-model tests that do not involve a UI thread.</summary>
 public sealed class ImmediateUiDispatcher : IUiDispatcher
 {
+    private readonly List<Task> _invoked = [];
+
     public bool CheckAccess() => true;
 
     public void Post(Action action) => action();
 
+    public Task InvokeAsync(Func<Task> action)
+    {
+        var task = action();
+        lock (_invoked)
+        {
+            _invoked.Add(task);
+        }
+
+        return task;
+    }
+
+    /// <summary>Completes when the background work started so far (debounced saves and parses) has finished.</summary>
+    public Task WhenIdleAsync()
+    {
+        lock (_invoked)
+        {
+            return Task.WhenAll(_invoked);
+        }
+    }
+}
+
+/// <summary>A UI thread that is busy with something else: what is posted waits until the test lets it run.</summary>
+public sealed class QueuedUiDispatcher : IUiDispatcher
+{
+    private readonly Queue<Action> _posted = new();
+
+    public bool CheckAccess() => false;
+
+    public void Post(Action action) => _posted.Enqueue(action);
+
     public Task InvokeAsync(Func<Task> action) => action();
+
+    public void RunPending()
+    {
+        while (_posted.TryDequeue(out var action))
+        {
+            action();
+        }
+    }
 }
 
 public sealed class FakeFolderPicker : IFolderPicker

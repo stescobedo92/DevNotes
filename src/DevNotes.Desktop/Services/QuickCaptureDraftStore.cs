@@ -77,7 +77,7 @@ public sealed partial class FileQuickCaptureDraftStore : IQuickCaptureDraftStore
             return;
         }
 
-        // The timer writes from a pool thread while the window may be saving from the UI thread.
+        // The window calls from the UI thread; the gate keeps the file consistent for any other caller.
         lock (_gate)
         {
             var temporary = _path + ".tmp";

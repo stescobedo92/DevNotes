@@ -46,7 +46,6 @@ public sealed partial class NoteEditorViewModel : ObservableObject, IDisposable
     private ContentHash _baseHash;
     private string _savedText = string.Empty;
     private bool _loading;
-    private int _derivedVersion;
     private int _openRequest;
     private int _editingSuspensions;
 
@@ -716,7 +715,6 @@ public sealed partial class NoteEditorViewModel : ObservableObject, IDisposable
         }
 
         var text = Text;
-        var version = ++_derivedVersion;
 
         // Parsing is pure CPU work: keep it off the UI thread so typing stays smooth in long notes.
         var (document, outline) = await Task.Run(() =>
@@ -725,7 +723,10 @@ public sealed partial class NoteEditorViewModel : ObservableObject, IDisposable
             return (parsed, BuildOutline(parsed, text));
         });
 
-        if (version == _derivedVersion && Path == path)
+        // Only while the buffer is still the text that was parsed. Whatever replaced it meanwhile
+        // (typing, a load, a save that stamped the id) brings its own parse; applying this one would
+        // show the state of text that no longer exists, for good when nothing else is scheduled.
+        if (Path == path && string.Equals(Text, text, StringComparison.Ordinal))
         {
             ApplyDerived(document, outline);
         }

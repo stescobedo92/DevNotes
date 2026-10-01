@@ -765,6 +765,77 @@ public sealed class OnDiskSqliteNoteIndexTests : SqliteNoteIndexTests
         File.Exists(DatabasePath + "-wal").Should().BeFalse();
     }
 
+    [Fact]
+    public async Task DisposeAsync_WithReadsStillQueued_ReleasesTheFile()
+    {
+        // Closing a vault while the list is still refreshing: a read that only gets a pool thread once
+        // the index is closed must not open a connection, which would go back to the pool after it
+        // was cleared and keep the file locked (on Windows) for as long as the process lives.
+        await Index.UpsertAsync([TestNotes.Create("a.md", "A", "Title", "body")], Ct);
+
+        // A busy machine, reproduced: every pool thread is held, so the reads stay queued until the
+        // index has been closed.
+        using var release = new ManualResetEventSlim();
+        var blockers = Enumerable.Range(0, 256).Select(_ => Task.Run(release.Wait, Ct)).ToList();
+        var readers = Enumerable.Range(0, 16).Select(_ => Index.CountAsync(Ct)).ToList();
+
+        await Index.DisposeAsync();
+        release.Set();
+        await Task.WhenAll(blockers);
+        var outcomes = await Task.WhenAll(readers.Select(async reader =>
+        {
+            try
+            {
+                await reader;
+                return (Exception?)null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }));
+
+        outcomes.Where(outcome => outcome is not null).Should().AllBeOfType<ObjectDisposedException>();
+
+        // Deleted directly: DeleteDatabaseFiles clears the pool itself and would hide a leaked connection.
+        FluentActions.Invoking(() => File.Delete(DatabasePath)).Should().NotThrow();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhileReadsAreRunning_ReturnsOnlyOnceNoReaderHoldsTheFile()
+    {
+        await Index.UpsertAsync([TestNotes.Create("a.md", "A", "Title", "body")], Ct);
+        var completed = 0;
+        var readers = Enumerable.Range(0, 8).Select(_ => Task.Run(
+            async () =>
+            {
+                try
+                {
+                    while (true)
+                    {
+                        await Index.CountAsync(Ct);
+                        Interlocked.Increment(ref completed);
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The index was closed under the reader, which is how its loop ends.
+                }
+            },
+            Ct)).ToList();
+        while (Volatile.Read(ref completed) < 200)
+        {
+            await Task.Yield();
+        }
+
+        await Index.DisposeAsync();
+
+        // Right away, without waiting for the readers: the ones that were reading have finished and
+        // none opens the file again.
+        FluentActions.Invoking(() => File.Delete(DatabasePath)).Should().NotThrow();
+        await Task.WhenAll(readers);
+    }
+
     private async Task<SqliteConnection> OpenRawAsync()
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DatabasePath, Pooling = false, ForeignKeys = true }.ToString());
