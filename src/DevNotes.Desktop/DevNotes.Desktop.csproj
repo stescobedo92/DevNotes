@@ -30,6 +30,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="SharpHook" />
   </ItemGroup>
 
   <ItemGroup>

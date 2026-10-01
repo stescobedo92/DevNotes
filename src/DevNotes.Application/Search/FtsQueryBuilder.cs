@@ -7,102 +7,84 @@ namespace DevNotes.Application.Search;
 /// <summary>
 /// Sanitized FTS5 <c>MATCH</c> expressions for one user query.
 /// <see cref="Match"/> targets the word index (unicode61); <see cref="TrigramMatch"/> targets the
-/// substring index and is null when no term is long enough for trigrams.
+/// substring index and is null when no term is long enough for trigrams; <see cref="Exclude"/>
+/// matches, on the word index, the notes that must be left out.
 /// </summary>
-public sealed record FtsQuery(string? Match, string? TrigramMatch)
+public sealed record FtsQuery(string? Match, string? TrigramMatch, string? Exclude = null)
 {
     public static FtsQuery Empty { get; } = new(null, null);
 
+    /// <summary>No positive text to search for (there may still be exclusions).</summary>
     public bool IsEmpty => Match is null;
 }
 
 /// <summary>
-/// Turns free text typed by the user into safe FTS5 queries.
+/// Turns the parsed search into safe FTS5 queries.
 /// Every term is emitted as a quoted string, so FTS5 operators (AND, OR, NOT, NEAR, column
 /// filters, '*', '^', parentheses…) typed by the user are always treated as plain text.
 /// The resulting expression is still passed to SQLite as a bound parameter.
 /// </summary>
 public static class FtsQueryBuilder
 {
-    public const int MaxInputLength = 256;
     public const int MaxTerms = 12;
     public const int MaxTermLength = 64;
     public const int MinTrigramLength = 3;
 
-    private static readonly SearchValues<char> _separators =
+    internal static readonly SearchValues<char> Separators =
         SearchValues.Create([' ', '\t', '\r', '\n', TextConstants.NoBreakSpace]);
 
-    public static FtsQuery Build(string? input)
+    /// <summary>Parses free text and builds the expressions in one step.</summary>
+    public static FtsQuery Build(string? input) => Build(SearchQueryParser.Parse(input));
+
+    public static FtsQuery Build(ParsedSearch search)
     {
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            return FtsQuery.Empty;
-        }
-
-        var span = input.AsSpan();
-        if (span.Length > MaxInputLength)
-        {
-            span = span[..MaxInputLength];
-        }
-
-        var terms = new List<string>(capacity: 4);
-        foreach (var range in span.SplitAny(_separators))
-        {
-            var term = Clean(span[range]);
-            if (term.Length == 0)
-            {
-                continue;
-            }
-
-            terms.Add(term);
-            if (terms.Count == MaxTerms)
-            {
-                break;
-            }
-        }
-
-        if (terms.Count == 0)
-        {
-            return FtsQuery.Empty;
-        }
+        ArgumentNullException.ThrowIfNull(search);
 
         var match = new StringBuilder();
         var trigram = new StringBuilder();
-        for (var i = 0; i < terms.Count; i++)
+        var exclude = new StringBuilder();
+        foreach (var term in search.Terms)
         {
-            var term = terms[i];
-            if (match.Length > 0)
+            if (term.IsExcluded)
             {
-                match.Append(' ');
+                // Alternatives: a note containing any excluded word or phrase is left out.
+                Append(exclude, term.Text, prefix: false, separator: " OR ");
+                continue;
             }
 
-            match.Append('"').Append(term).Append('"');
-
-            // Search-as-you-type: the term being typed matches by prefix.
-            if (i == terms.Count - 1)
+            Append(match, term.Text, term.IsPrefix, separator: " ");
+            if (term.Text.Length >= MinTrigramLength)
             {
-                match.Append('*');
-            }
-
-            if (term.Length >= MinTrigramLength)
-            {
-                if (trigram.Length > 0)
-                {
-                    trigram.Append(' ');
-                }
-
-                trigram.Append('"').Append(term).Append('"');
+                Append(trigram, term.Text, prefix: false, separator: " ");
             }
         }
 
-        return new FtsQuery(match.ToString(), trigram.Length > 0 ? trigram.ToString() : null);
+        return new FtsQuery(
+            match.Length > 0 ? match.ToString() : null,
+            trigram.Length > 0 ? trigram.ToString() : null,
+            exclude.Length > 0 ? exclude.ToString() : null);
+    }
+
+    private static void Append(StringBuilder expression, string term, bool prefix, string separator)
+    {
+        if (expression.Length > 0)
+        {
+            expression.Append(separator);
+        }
+
+        // A quoted string with spaces is a phrase for FTS5; "*" after it matches the last word by prefix.
+        expression.Append('"').Append(term).Append('"');
+        if (prefix)
+        {
+            expression.Append('*');
+        }
     }
 
     /// <summary>
     /// Removes what cannot live inside an FTS5 string (quotes, control characters) and rejects
     /// terms without any letter or digit, which would tokenize to an empty phrase.
     /// </summary>
-    private static string Clean(ReadOnlySpan<char> term)
+    internal static string CleanTerm(ReadOnlySpan<char> term)
     {
         if (term.Length > MaxTermLength)
         {

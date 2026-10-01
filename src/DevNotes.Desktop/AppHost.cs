@@ -39,15 +39,16 @@ public static class AppHost
         builder.Services
             .AddDevNotesInfrastructure()
             .AddDevNotesApplication()
-            .AddDevNotesDesktop(builder.Configuration);
+            .AddDevNotesDesktop(builder.Configuration, args);
 
         return builder.Build();
     }
 
-    public static IServiceCollection AddDevNotesDesktop(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddDevNotesDesktop(this IServiceCollection services, IConfiguration configuration, string[] args)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(args);
 
         services.Configure<IndexingOptions>(configuration.GetSection(IndexingOptions.SectionName));
         services.Configure<EditorOptions>(configuration.GetSection(EditorOptions.SectionName));
@@ -61,6 +62,12 @@ public static class AppHost
         services.AddSingleton<ILinkOpener, AvaloniaLinkOpener>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<ICodeHighlighter, TextMateCodeHighlighter>();
+        services.AddSingleton(LaunchContext.FromArguments(args));
+        services.AddSingleton<IGlobalHotkeyService>(CreateGlobalHotkeyService);
+        services.AddSingleton<IQuickCaptureDraftStore, FileQuickCaptureDraftStore>();
+        services.AddSingleton<QuickCaptureWindowPresenter>();
+        services.AddSingleton<IQuickCapturePresenter>(provider => provider.GetRequiredService<QuickCaptureWindowPresenter>());
+        services.AddSingleton<QuickCaptureCoordinator>();
 
         // View models: one instance each, they live as long as the main window.
         services.AddSingleton<DialogHostViewModel>();
@@ -70,7 +77,28 @@ public static class AppHost
         services.AddSingleton<NoteListViewModel>();
         services.AddSingleton<NoteEditorViewModel>();
         services.AddSingleton<QuickOpenViewModel>();
+        services.AddSingleton<FilterPanelViewModel>();
+        services.AddSingleton<QuickCaptureViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         return services;
+    }
+
+    /// <summary>
+    /// Windows registers the shortcut with the system (no keyboard hook at all); macOS and Linux
+    /// need a keyboard-only hook. Anything else has no system-wide shortcuts.
+    /// </summary>
+    private static IGlobalHotkeyService CreateGlobalHotkeyService(IServiceProvider provider)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new Win32GlobalHotkeyService(provider.GetRequiredService<ILogger<Win32GlobalHotkeyService>>());
+        }
+
+        if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+        {
+            return new SharpHookGlobalHotkeyService(provider.GetRequiredService<ILogger<SharpHookGlobalHotkeyService>>());
+        }
+
+        return new UnavailableGlobalHotkeyService(Resources.Strings.Hotkey_NoWindow);
     }
 }

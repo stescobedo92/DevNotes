@@ -356,11 +356,12 @@ public abstract class SqliteNoteIndexTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SearchAsync_EmptyQueryOrZeroLimit_ReturnsNothing()
+    public async Task SearchAsync_EmptyQueryListsEverything_AndZeroLimitReturnsNothing()
     {
         await SeedSearchCorpusAsync();
 
-        (await Index.SearchAsync(new SearchQuery(FtsQuery.Empty, NoteSortOrder.Relevance, 10), Ct)).Should().BeEmpty();
+        (await Index.SearchAsync(new SearchQuery(FtsQuery.Empty, NoteSortOrder.Relevance, 10), Ct)).Should().HaveCount(3, "an empty query is a listing restricted by nothing");
+        (await Index.SearchAsync(new SearchQuery(FtsQuery.Empty, NoteSortOrder.Relevance, 0), Ct)).Should().BeEmpty();
         (await Index.SearchAsync(new SearchQuery(FtsQueryBuilder.Build("deadlock"), NoteSortOrder.Relevance, 0), Ct)).Should().BeEmpty();
     }
 
@@ -442,17 +443,189 @@ public abstract class SqliteNoteIndexTests : IAsyncLifetime
         outcomes.Where(outcome => outcome is not null).Should().AllBeOfType<ObjectDisposedException>();
     }
 
-    [Theory]
-    [InlineData("Ábaco", "ABACO")]
-    [InlineData("ñandú", "NANDU")]
-    [InlineData("plain", "PLAIN")]
-    public void ToSortKey_FoldsCaseAndDiacritics(string title, string expected)
+    // ----- Filters, exclusions and facets ---------------------------------------------------------
+
+    [Fact]
+    public async Task SearchAsync_ProjectFilter_IgnoresCaseAndAccents()
     {
-        SqliteNoteIndex.ToSortKey(title).Should().Be(expected);
+        await SeedFilterCorpusAsync();
+
+        (await Filtered("project:AZURE-microservices")).Should().Equal("ops.md", "bug.md");
+        (await Filtered("project:\"Déploiement\"")).Should().Equal("fr.md");
+        (await Filtered("project:deploiement")).Should().Equal("fr.md");
+        (await Filtered("project:unknown")).Should().BeEmpty();
+        (await Filtered("project:cslinq project:deploiement")).Should().Equal(["fr.md", "code.md"], "either project matches");
+    }
+
+    [Fact]
+    public async Task SearchAsync_TagFilters_AllMustBePresent()
+    {
+        await SeedFilterCorpusAsync();
+
+        (await Filtered("tag:sql-server")).Should().Equal("ops.md", "bug.md");
+        (await Filtered("tag:sql-server tag:deadlock")).Should().Equal("bug.md");
+        (await Filtered("#Performance")).Should().Equal("bug.md", "code.md");
+        (await Filtered("tag:nothing")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchAsync_TypeCommitAndTicketFilters()
+    {
+        await SeedFilterCorpusAsync();
+
+        (await Filtered("type:bug")).Should().Equal("bug.md");
+        (await Filtered("type:bug type:runbook")).Should().Equal("ops.md", "bug.md");
+        (await Filtered("commit:a3f9c21")).Should().Equal(["bug.md"], "the short hash is a prefix of the stored one");
+        (await Filtered("commit:A3F9C21D0F3B7A1C9E5D2B4F6A8C0E1D3F5B7A9C")).Should().Equal(["bug.md"], "the stored short hash is a prefix of the typed one");
+        (await Filtered("commit:7be04d8")).Should().Equal("code.md");
+        (await Filtered("commit:ffff")).Should().BeEmpty();
+        (await Filtered("ticket:ms-482")).Should().Equal("ops.md", "bug.md");
+        (await Filtered("ticket:MS-4")).Should().BeEmpty("tickets match whole");
+    }
+
+    [Fact]
+    public async Task SearchAsync_DateFilters_UseInclusiveAndExclusiveBounds()
+    {
+        await SeedFilterCorpusAsync();
+
+        (await Filtered("created:2026-09-12")).Should().Equal("bug.md");
+        (await Filtered("created:>2026-09-12")).Should().Equal("fr.md", "ops.md");
+        (await Filtered("created:>=2026-09-12")).Should().Equal("fr.md", "ops.md", "bug.md");
+        (await Filtered("created:<2026-09-12")).Should().Equal("code.md");
+        (await Filtered("created:2026-09")).Should().Equal("ops.md", "bug.md", "code.md");
+        (await Filtered("created:2026-09-10..2026-09-12")).Should().Equal("bug.md", "code.md");
+        (await Filtered("updated:>=2026-09-20")).Should().Equal("fr.md", "ops.md");
+        (await Filtered("created:2025")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchAsync_Exclusions_WorkWithAndWithoutText()
+    {
+        await SeedFilterCorpusAsync();
+
+        (await Filtered("-azure")).Should().Equal("fr.md", "bug.md", "code.md");
+        (await Filtered("-azure -sql")).Should().Equal("fr.md", "code.md");
+        (await Filtered("servicio -azure")).Should().BeEmpty();
+        (await Filtered("inventario -nocturno")).Should().BeEmpty();
+        (await Filtered("inventario")).Should().Equal("bug.md");
+        (await Filtered("-\"proceso nocturno\"")).Should().Equal("fr.md", "ops.md", "code.md");
+    }
+
+    [Fact]
+    public async Task SearchAsync_TextAndFilters_CombineInEveryOrder()
+    {
+        await SeedFilterCorpusAsync();
+
+        foreach (var sort in new[] { NoteSortOrder.Relevance, NoteSortOrder.UpdatedDescending, NoteSortOrder.TitleAscending })
+        {
+            (await Filtered("servicio project:azure-microservices", sort)).Should().Equal("ops.md");
+            (await Filtered("servicio project:cslinq", sort)).Should().BeEmpty();
+            (await Filtered("de tag:sql-server -nocturno", sort)).Should().Equal("ops.md");
+            (await Filtered("Inventory type:snippet", sort)).Should().Equal(["code.md"], "substring matches keep the filter too");
+            (await Filtered("Inventory type:bug", sort)).Should().BeEmpty();
+        }
+    }
+
+    [Fact]
+    public async Task SearchAsync_FilteredListing_IsOrderedAndLimitedLikeAListing()
+    {
+        await SeedFilterCorpusAsync();
+
+        var recent = await Index.SearchAsync(new SearchQuery(FtsQuery.Empty, NoteSortOrder.UpdatedDescending, 10) { Filter = new NoteFilter { Tags = [Tag.Create("sql-server")] } }, Ct);
+        var byTitle = await Index.SearchAsync(new SearchQuery(FtsQuery.Empty, NoteSortOrder.TitleAscending, 10) { Filter = new NoteFilter { Tags = [Tag.Create("sql-server")] } }, Ct);
+        var limited = await Index.SearchAsync(new SearchQuery(FtsQuery.Empty, NoteSortOrder.TitleAscending, 1) { Filter = new NoteFilter { Tags = [Tag.Create("sql-server")] } }, Ct);
+
+        recent.Select(hit => hit.Note.Path.Value).Should().Equal("ops.md", "bug.md");
+        byTitle.Select(hit => hit.Note.Path.Value).Should().Equal("bug.md", "ops.md");
+        limited.Should().ContainSingle().Which.Note.Path.Value.Should().Be("bug.md");
+        recent[0].Snippet.Should().BeEmpty("there is nothing to highlight");
+        recent[0].Note.Excerpt.Should().StartWith("Pasos para publicar");
+    }
+
+    [Fact]
+    public async Task SearchAsync_UnsatisfiableFilter_ReturnsNothing()
+    {
+        await SeedFilterCorpusAsync();
+
+        var query = new SearchQuery(FtsQueryBuilder.Build("de"), NoteSortOrder.Relevance, 10) { Filter = new NoteFilter { IsUnsatisfiable = true } };
+
+        (await Index.SearchAsync(query, Ct)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetFacetsAsync_CountsProjectsTagsAndTypes()
+    {
+        (await Index.GetFacetsAsync(Ct)).Should().BeEquivalentTo(NoteFacets.Empty);
+        await SeedFilterCorpusAsync();
+
+        var facets = await Index.GetFacetsAsync(Ct);
+
+        facets.Projects.Should().Equal(
+            new FacetCount("Azure-Microservices", 2),
+            new FacetCount("cslinq", 1),
+            new FacetCount("Déploiement", 1));
+        facets.Tags.Should().Equal(
+            new FacetCount("performance", 2),
+            new FacetCount("sql-server", 2),
+            new FacetCount("deadlock", 1));
+        facets.Types.Should().Equal(
+            new FacetCount("bug", 1),
+            new FacetCount("note", 1),
+            new FacetCount("runbook", 1),
+            new FacetCount("snippet", 1));
+    }
+
+    [Fact]
+    public async Task GetFacetsAsync_MergesSpellingsOfOneProject()
+    {
+        await Index.UpsertAsync(
+            [
+                TestNotes.Create("a.md", "A", "A", project: "Azure"),
+                TestNotes.Create("b.md", "B", "B", project: "azure"),
+                TestNotes.Create("c.md", "C", "C", project: "Ázure"),
+            ],
+            Ct);
+
+        var facets = await Index.GetFacetsAsync(Ct);
+
+        facets.Projects.Should().ContainSingle().Which.Count.Should().Be(3);
     }
 
     protected Task<IReadOnlyList<SearchHit>> Search(string text) =>
         Index.SearchAsync(new SearchQuery(FtsQueryBuilder.Build(text), NoteSortOrder.Relevance, 50), Ct);
+
+    /// <summary>Paths of the notes matching the typed query, in index order (most recent first unless sorted otherwise).</summary>
+    private async Task<IReadOnlyList<string>> Filtered(string text, NoteSortOrder sort = NoteSortOrder.UpdatedDescending)
+    {
+        var parsed = SearchQueryParser.Parse(text);
+        var query = new SearchQuery(FtsQueryBuilder.Build(parsed), sort, 50) { Filter = parsed.Filter };
+        var hits = await Index.SearchAsync(query, Ct);
+        return [.. hits.Select(hit => hit.Note.Path.Value)];
+    }
+
+    private Task SeedFilterCorpusAsync() =>
+        Index.UpsertAsync(
+            [
+                TestNotes.Create(
+                    "bug.md", "BUG", "Deadlock en inventario", "El proceso nocturno se bloqueaba con SQL Server.",
+                    tags: ["sql-server", "deadlock", "performance"], type: NoteType.Bug, project: "azure-microservices",
+                    created: new DateOnly(2026, 9, 12), updated: new DateOnly(2026, 9, 14),
+                    links: new NoteLinks(["a3f9c21d0f3b7a1c9e5d2b4f6a8c0e1d3f5b7a9c"], ["MS-482"], []), minutesAfterBase: 1),
+                TestNotes.Create(
+                    "code.md", "CODE", "Snippet de repositorio", "await repository.UpdateInventoryAsync(items, ct);",
+                    tags: ["performance"], type: NoteType.Snippet, project: "cslinq",
+                    created: new DateOnly(2026, 9, 10), updated: new DateOnly(2026, 9, 10),
+                    links: new NoteLinks(["7be04d8"], [], []), minutesAfterBase: 2),
+                TestNotes.Create(
+                    "ops.md", "OPS", "Runbook de despliegue", "Pasos para publicar el servicio en Azure con SQL.",
+                    tags: ["sql-server"], type: NoteType.Runbook, project: "Azure-Microservices",
+                    created: new DateOnly(2026, 9, 20), updated: new DateOnly(2026, 9, 21),
+                    links: new NoteLinks([], ["ms-482"], []), minutesAfterBase: 3),
+                TestNotes.Create(
+                    "fr.md", "FR", "Notes de déploiement", "Étapes du déploiement.",
+                    project: "Déploiement", created: new DateOnly(2026, 10, 1), updated: new DateOnly(2026, 10, 1), minutesAfterBase: 4),
+            ],
+            Ct);
 
     private Task SeedSearchCorpusAsync() =>
         Index.UpsertAsync(

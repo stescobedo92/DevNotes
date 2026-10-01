@@ -107,6 +107,106 @@ public sealed class HeldSettingsStore : ISettingsStore
     }
 }
 
+public sealed class FakeQuickCapturePresenter : IQuickCapturePresenter
+{
+    public int ShowCalls { get; private set; }
+
+    public int HideCalls { get; private set; }
+
+    public bool IsShown { get; private set; }
+
+    public void Show()
+    {
+        ShowCalls++;
+        IsShown = true;
+    }
+
+    public void Hide()
+    {
+        HideCalls++;
+        IsShown = false;
+    }
+}
+
+/// <summary>Global shortcut whose registration and key presses are driven by the test.</summary>
+public sealed class FakeGlobalHotkeyService : IGlobalHotkeyService
+{
+    public HotkeyState State { get; private set; } = HotkeyState.Inactive;
+
+    public event EventHandler? Pressed;
+
+    public event EventHandler? StateChanged;
+
+    public bool CanRequestPermission { get; set; }
+
+    public HotkeyGesture? Registered { get; private set; }
+
+    public int RegisterCalls { get; private set; }
+
+    public int UnregisterCalls { get; private set; }
+
+    public int PermissionRequests { get; private set; }
+
+    public bool IsAttached { get; private set; }
+
+    /// <summary>State reported after the next registration (to simulate a shortcut in use, an unsupported session…).</summary>
+    public HotkeyState NextRegistrationState { get; set; } = HotkeyState.Active;
+
+    public void Attach(Avalonia.Controls.TopLevel window) => IsAttached = true;
+
+    public void Register(HotkeyGesture gesture)
+    {
+        RegisterCalls++;
+        Registered = gesture;
+        SetState(NextRegistrationState);
+    }
+
+    public void Unregister()
+    {
+        UnregisterCalls++;
+        Registered = null;
+        SetState(HotkeyState.Inactive);
+    }
+
+    public void RequestPermission() => PermissionRequests++;
+
+    public void Press() => Pressed?.Invoke(this, EventArgs.Empty);
+
+    public void SetState(HotkeyState state)
+    {
+        State = state;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Dispose()
+    {
+    }
+}
+
+/// <summary>In-memory draft store: what the capture window would keep on disk.</summary>
+public sealed class FakeQuickCaptureDraftStore : IQuickCaptureDraftStore
+{
+    public CaptureDraft? Stored { get; set; }
+
+    public int Saves { get; private set; }
+
+    public int Clears { get; private set; }
+
+    public CaptureDraft? Load() => Stored;
+
+    public void Save(CaptureDraft draft)
+    {
+        Saves++;
+        Stored = draft.IsEmpty ? null : draft;
+    }
+
+    public void Clear()
+    {
+        Clears++;
+        Stored = null;
+    }
+}
+
 public sealed class RecordingNotifications : INotificationService
 {
     public List<(string Message, NotificationKind Kind)> Shown { get; } = [];

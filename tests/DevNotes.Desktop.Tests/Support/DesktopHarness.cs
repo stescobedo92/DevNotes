@@ -35,6 +35,10 @@ public sealed class DesktopHarness : IAsyncDisposable
         services.AddSingleton<ILinkOpener>(Links);
         services.AddSingleton<IThemeService>(Theme);
         services.AddSingleton<ICodeHighlighter, TextMateCodeHighlighter>();
+        services.AddSingleton<IQuickCapturePresenter>(QuickCapture);
+        services.AddSingleton<IGlobalHotkeyService>(Hotkey);
+        services.AddSingleton<IQuickCaptureDraftStore>(Drafts);
+        services.AddSingleton(LaunchContext.None);
         services.AddSingleton<DialogHostViewModel>();
         services.AddSingleton<IDialogService>(provider => provider.GetRequiredService<DialogHostViewModel>());
         services.AddSingleton<NotificationViewModel>();
@@ -42,6 +46,8 @@ public sealed class DesktopHarness : IAsyncDisposable
         services.AddSingleton<NoteListViewModel>();
         services.AddSingleton<NoteEditorViewModel>();
         services.AddSingleton<QuickOpenViewModel>();
+        services.AddSingleton<FilterPanelViewModel>();
+        services.AddSingleton<QuickCaptureViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         configure?.Invoke(services);
         _services = services.BuildServiceProvider();
@@ -59,7 +65,18 @@ public sealed class DesktopHarness : IAsyncDisposable
 
     public FakeThemeService Theme { get; } = new();
 
+    public FakeQuickCapturePresenter QuickCapture { get; } = new();
+
+    public FakeGlobalHotkeyService Hotkey { get; } = new();
+
+    public FakeQuickCaptureDraftStore Drafts { get; } = new();
+
     public MainWindowViewModel Shell => _services.GetRequiredService<MainWindowViewModel>();
+
+    public QuickCaptureViewModel CaptureViewModel => _services.GetRequiredService<QuickCaptureViewModel>();
+
+    public T Get<T>()
+        where T : notnull => _services.GetRequiredService<T>();
 
     public ISettingsService Settings => _services.GetRequiredService<ISettingsService>();
 
@@ -104,6 +121,7 @@ public sealed class DesktopHarness : IAsyncDisposable
         Dispatcher.UIThread.RunJobs();
         await Shell.NoteList.RefreshAsync();
         await Shell.NoteList.WhenSettledAsync();
+        await Shell.RefreshFiltersAsync();
     }
 
     public async ValueTask DisposeAsync()

@@ -41,7 +41,24 @@ public sealed record SearchHit(
 
 public sealed record NoteListQuery(NoteSortOrder Sort, int Limit);
 
-public sealed record SearchQuery(FtsQuery Query, NoteSortOrder Sort, int Limit);
+/// <summary>
+/// A search of the index. <see cref="Query"/> may be empty: the notes are then only restricted by
+/// <see cref="Filter"/> and by the exclusions of the query, and returned in the requested order
+/// with a plain excerpt instead of a highlighted fragment.
+/// </summary>
+public sealed record SearchQuery(FtsQuery Query, NoteSortOrder Sort, int Limit)
+{
+    public NoteFilter Filter { get; init; } = NoteFilter.Empty;
+}
+
+/// <summary>How many notes carry one value of a field.</summary>
+public sealed record FacetCount(string Value, int Count);
+
+/// <summary>Distinct projects, tags and types of the vault with the number of notes of each.</summary>
+public sealed record NoteFacets(IReadOnlyList<FacetCount> Projects, IReadOnlyList<FacetCount> Tags, IReadOnlyList<FacetCount> Types)
+{
+    public static NoteFacets Empty { get; } = new([], [], []);
+}
 
 /// <summary>One row of the note list: either a plain listing entry or a search hit with highlights.</summary>
 public sealed record NoteListEntry(

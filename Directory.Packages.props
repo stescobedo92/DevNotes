@@ -21,6 +21,8 @@
     <!-- Must match the TextMateSharp version AvaloniaEdit.TextMate was built against. -->
     <PackageVersion Include="TextMateSharp.Grammars" Version="2.0.3" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Global keyboard hook for the quick-capture shortcut on macOS and Linux (Windows uses RegisterHotKey). -->
+    <PackageVersion Include="SharpHook" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup Label="Platform">

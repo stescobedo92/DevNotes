@@ -80,15 +80,18 @@ public sealed class MainWindowViewModelTests
         var shell = harness.Shell;
 
         var command = shell.NewNoteCommand.ExecuteAsync(null);
-        var prompt = shell.Dialogs.Current.Should().BeOfType<PromptDialogViewModel>().Subject;
-        prompt.Title.Should().Be(Strings.Dialog_NewNote_Title);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is NewNoteDialogViewModel, "the new note dialog");
+        var dialog = shell.Dialogs.Current.Should().BeOfType<NewNoteDialogViewModel>().Subject;
+        dialog.Title.Should().Be(Strings.Dialog_NewNote_Title);
+        dialog.Templates.Select(template => template.Key).Should().StartWith(["note", "bug", "adr", "runbook", "learning", "snippet"]);
+        dialog.SelectedTemplate.Key.Should().Be("note");
 
-        prompt.Value = "   ";
-        prompt.ConfirmCommand.Execute(null);
-        prompt.HasError.Should().BeTrue();
+        dialog.TitleInput = "   ";
+        dialog.ConfirmCommand.Execute(null);
+        dialog.HasError.Should().BeTrue();
 
-        prompt.Value = "Índice FTS5 lento";
-        prompt.ConfirmCommand.Execute(null);
+        dialog.TitleInput = "Índice FTS5 lento";
+        dialog.ConfirmCommand.Execute(null);
         await command;
 
         shell.Editor.Path!.Value.Value.Should().Be("indice-fts5-lento.md");
@@ -112,12 +115,19 @@ public sealed class MainWindowViewModelTests
         shell.Editor.Path.Should().Be(_deadlock);
 
         var command = shell.NewNoteCommand.ExecuteAsync(null);
-        var prompt = (PromptDialogViewModel)shell.Dialogs.Current!;
-        prompt.Value = "Otro bug";
-        prompt.ConfirmCommand.Execute(null);
+        await UiTest.WaitForAsync(() => shell.Dialogs.Current is NewNoteDialogViewModel, "the new note dialog");
+        var dialog = (NewNoteDialogViewModel)shell.Dialogs.Current!;
+        dialog.TitleInput = "Otro bug";
+        dialog.SelectedTemplate = dialog.Templates.Single(template => template.Key == "bug");
+        dialog.Project = "cslinq";
+        dialog.ConfirmCommand.Execute(null);
         await command;
 
         shell.Editor.Path!.Value.Value.Should().Be("bugs/otro-bug.md");
+        shell.Editor.Metadata!.Type.Should().Be(NoteType.Bug);
+        shell.Editor.Metadata.Project.Should().Be("cslinq");
+        shell.Editor.Text.Should().Contain("# Otro bug").And.NotContain("{{");
+        shell.Editor.Text.Should().Match(text => text.Contains("## Síntoma") || text.Contains("## Symptom"), "the bug template of the UI language was used");
     }
 
     [AvaloniaFact]

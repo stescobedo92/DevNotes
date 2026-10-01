@@ -108,6 +108,22 @@
                        VerticalAlignment="Center"
                        Margin="{DynamicResource InsetSidebarItem}"
                        Text="{Binding NoteCountText}" />
+            <TextBlock x:Name="BranchText"
+                       Classes="secondary small"
+                       VerticalAlignment="Center"
+                       Margin="{DynamicResource GapRight2}"
+                       IsVisible="{Binding HasBranch}"
+                       Text="{Binding BranchText, StringFormat='⎇ {0}'}"
+                       ToolTip.Tip="{Binding BranchTip}"
+                       AutomationProperties.Name="{Binding BranchTip}" />
+            <Button x:Name="ActiveProjectButton"
+                    Classes="link"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding HasActiveProject}"
+                    Command="{Binding FilterActiveProjectCommand}"
+                    Content="{Binding ActiveProjectText}"
+                    ToolTip.Tip="{Binding ActiveProjectTip}"
+                    AutomationProperties.Name="{x:Static res:Strings.A11y_ActiveProject}" />
           </StackPanel>
         </DockPanel>
       </Border>

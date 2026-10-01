@@ -9,11 +9,22 @@ namespace DevNotes.Application.Notes;
 /// <summary>A note loaded for editing. <see cref="Hash"/> identifies the on-disk version the text came from.</summary>
 public sealed record OpenedNote(NotePath Path, string Text, ContentHash Hash, NoteDocument Document);
 
+/// <param name="Title">Title of the note (also its file name).</param>
+/// <param name="Folder">Folder inside the vault; the root when null.</param>
+/// <param name="Type">Type of the note; with a template, the value of its <c>{{type}}</c> placeholder.</param>
+/// <param name="Project">Project of the note; with a template, the value of its <c>{{project}}</c> placeholder.</param>
+/// <param name="Template">
+/// Template text (see <see cref="NoteTemplates"/>) rendered with a fresh id, the title, the project,
+/// today's date and <paramref name="Body"/>. Without it the minimal default note is written.
+/// </param>
+/// <param name="Body">Text captured for the note, placed where the template says (or at its end).</param>
 public sealed record NewNoteRequest(
     string Title,
     string? Folder = null,
     NoteType Type = NoteType.Note,
-    string? Project = null);
+    string? Project = null,
+    string? Template = null,
+    string? Body = null);
 
 public enum SaveMode
 {
@@ -176,7 +187,7 @@ public sealed partial class NoteService : INoteService
         for (var attempt = 1; attempt <= MaxNameAttempts; attempt++)
         {
             var path = BuildPath(request.Folder, Numbered(slug, attempt), nameof(request));
-            var content = NoteTemplates.CreateDefault(_idGenerator.NewId(), title, request.Type, request.Project, Today);
+            var content = RenderNewNote(request, title);
             try
             {
                 var written = await _files.WriteAsync(path, content, NoteWriteMode.CreateNew, cancellationToken).ConfigureAwait(false);
@@ -293,6 +304,23 @@ public sealed partial class NoteService : INoteService
         disk is not null && NoteDocumentParser.Parse(disk.Text, fallbackTitle).Metadata.Id is { } existing
             ? new FixedNoteIdGenerator(existing)
             : _idGenerator;
+
+    /// <summary>
+    /// The text of a new note. A rendered template is stamped like any note before being written:
+    /// an id it did not fill in is generated, and <c>updated</c> is set to today.
+    /// </summary>
+    private string RenderNewNote(NewNoteRequest request, string title)
+    {
+        var id = _idGenerator.NewId();
+        if (request.Template is not { } template)
+        {
+            var text = NoteTemplates.CreateDefault(id, title, request.Type, request.Project, Today);
+            return string.IsNullOrWhiteSpace(request.Body) ? text : text + request.Body.Trim() + "\n";
+        }
+
+        var rendered = NoteTemplates.Render(template, new TemplateContext(id, title, request.Project, Today, request.Type, request.Body));
+        return NoteStamper.Stamp(rendered, title, new FixedNoteIdGenerator(id), Today).Text;
+    }
 
     private static OpenedNote ToOpenedNote(NoteFile file) =>
         new(file.Info.Path, file.Text, file.Hash, NoteDocumentParser.Parse(file.Text, file.Info.Path.FileNameWithoutExtension));

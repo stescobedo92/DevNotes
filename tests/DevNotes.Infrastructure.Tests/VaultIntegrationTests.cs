@@ -224,7 +224,7 @@ public sealed class VaultIntegrationTests : IAsyncLifetime
     }
 
     private Task<NoteQueryResult> QueryAsync(string text) =>
-        _session.Queries.QueryAsync(text, NoteSortOrder.Relevance, 50, Ct);
+        _session.Queries.QueryAsync(text, NoteFilter.Empty, NoteSortOrder.Relevance, 50, Ct);
 
     private static async Task EventuallyAsync(Func<Task<bool>> condition)
     {
