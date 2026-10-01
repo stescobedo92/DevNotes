@@ -34,6 +34,26 @@ public sealed class ImmediateUiDispatcher : IUiDispatcher
     }
 }
 
+/// <summary>A UI thread that is busy with something else: what is posted waits until the test lets it run.</summary>
+public sealed class QueuedUiDispatcher : IUiDispatcher
+{
+    private readonly Queue<Action> _posted = new();
+
+    public bool CheckAccess() => false;
+
+    public void Post(Action action) => _posted.Enqueue(action);
+
+    public Task InvokeAsync(Func<Task> action) => action();
+
+    public void RunPending()
+    {
+        while (_posted.TryDequeue(out var action))
+        {
+            action();
+        }
+    }
+}
+
 public sealed class FakeFolderPicker : IFolderPicker
 {
     /// <summary>Folder returned by the next call; null simulates the user cancelling the dialog.</summary>
