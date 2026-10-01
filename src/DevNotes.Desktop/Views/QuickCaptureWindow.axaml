@@ -37,14 +37,14 @@
     <Grid ColumnDefinitions="*,Auto" DockPanel.Dock="Top" Margin="{DynamicResource GapBelow2}">
       <TextBox x:Name="TitleBox"
                Text="{Binding Title}"
-               Watermark="{x:Static res:Strings.Capture_TitlePlaceholder}"
+               PlaceholderText="{x:Static res:Strings.Capture_TitlePlaceholder}"
                AutomationProperties.Name="{x:Static res:Strings.A11y_CaptureTitle}" />
       <TextBox x:Name="ProjectBox"
                Grid.Column="1"
                Width="160"
                Margin="{DynamicResource GapListIndent}"
                Text="{Binding Project}"
-               Watermark="{x:Static res:Strings.Capture_ProjectPlaceholder}"
+               PlaceholderText="{x:Static res:Strings.Capture_ProjectPlaceholder}"
                AutomationProperties.Name="{x:Static res:Strings.A11y_CaptureProject}" />
     </Grid>
 
@@ -54,7 +54,7 @@
              TextWrapping="Wrap"
              VerticalContentAlignment="Top"
              Text="{Binding Text}"
-             Watermark="{x:Static res:Strings.Capture_TextPlaceholder}"
+             PlaceholderText="{x:Static res:Strings.Capture_TextPlaceholder}"
              AutomationProperties.Name="{x:Static res:Strings.A11y_CaptureText}" />
 
   </DockPanel>
