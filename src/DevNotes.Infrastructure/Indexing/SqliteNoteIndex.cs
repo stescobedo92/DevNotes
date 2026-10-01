@@ -33,7 +33,9 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         "CA2213:Disposable fields should be disposed",
         Justification = "Writers queued behind a disposal must still be able to take and release it; no wait handle is ever allocated.")]
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private readonly TaskCompletionSource _readersDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private SqliteConnection? _keepAlive;
+    private int _readers;
     private int _disposed;
 
     private SqliteNoteIndex(string connectionString, string? databasePath, ILogger<SqliteNoteIndex> logger)
@@ -287,6 +289,16 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         await _writeGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Same for the readers in flight (a list refresh overtaken by the close): the pool is only
+            // cleared once the last of them has returned its connection. One opened after that would
+            // go back to the pool and keep the file locked, so a reader that starts late opens nothing
+            // (see ReadAsync).
+            if (Volatile.Read(ref _readers) == 0)
+            {
+                _readersDrained.TrySetResult();
+            }
+
+            await _readersDrained.Task.ConfigureAwait(false);
             _keepAlive?.Dispose();
             _keepAlive = null;
             ReleasePooledConnections();
@@ -510,8 +522,22 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         return Task.Run(
             () =>
             {
-                using var connection = Open();
-                return query(connection);
+                // Counted before the check, so one of two things holds: the close sees this reader and
+                // waits for it, or this reader sees the close and opens nothing.
+                Interlocked.Increment(ref _readers);
+                try
+                {
+                    ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+                    using var connection = Open();
+                    return query(connection);
+                }
+                finally
+                {
+                    if (Interlocked.Decrement(ref _readers) == 0 && Volatile.Read(ref _disposed) != 0)
+                    {
+                        _readersDrained.TrySetResult();
+                    }
+                }
             },
             cancellationToken);
     }
