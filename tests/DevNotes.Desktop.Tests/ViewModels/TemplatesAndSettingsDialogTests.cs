@@ -237,6 +237,15 @@ public sealed class TemplatesAndSettingsDialogTests
         dialog.GlobalHotkeyEnabled = false;
         await UiTest.WaitForAsync(() => !harness.Settings.Current.QuickCapture.GlobalHotkeyEnabled, "the toggle to be saved");
 
+        // Without a global shortcut the status names the one that keeps working inside the app (a fixed one of its own).
+        shell.QuickCaptureShortcut.Should().NotBeEmpty();
+        harness.Hotkey.SetState(new HotkeyState(HotkeyStatus.Unsupported, "wayland"));
+        dialog.HotkeyStatusText.Should().Be(ErrorMessages.Format(Strings.Settings_HotkeyStatus_Unavailable, "wayland", shell.QuickCaptureShortcut))
+            .And.Contain(shell.QuickCaptureShortcut);
+        harness.Hotkey.SetState(HotkeyState.Inactive);
+        dialog.HotkeyStatusText.Should().Be(ErrorMessages.Format(Strings.Settings_HotkeyStatus_Disabled, shell.QuickCaptureShortcut))
+            .And.Contain(shell.QuickCaptureShortcut);
+
         harness.Hotkey.SetState(HotkeyState.Active);
         dialog.HotkeyStatusText.Should().Be(Strings.Settings_HotkeyStatus_Active);
 

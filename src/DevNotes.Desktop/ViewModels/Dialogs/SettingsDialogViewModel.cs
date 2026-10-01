@@ -233,9 +233,10 @@ public sealed partial class SettingsDialogViewModel : DialogViewModel
         HotkeyStatusText = state.Status switch
         {
             HotkeyStatus.Active => Strings.Settings_HotkeyStatus_Active,
-            HotkeyStatus.Unsupported => ErrorMessages.Format(Strings.Settings_HotkeyStatus_Unavailable, state.Reason),
+            // The shortcut inside the app is a fixed one of its own; it does not follow the global setting.
+            HotkeyStatus.Unsupported => ErrorMessages.Format(Strings.Settings_HotkeyStatus_Unavailable, state.Reason, InAppCaptureShortcut),
             HotkeyStatus.Failed => ErrorMessages.Format(Strings.Settings_HotkeyStatus_Failed, state.Reason),
-            _ => Strings.Settings_HotkeyStatus_Disabled,
+            _ => ErrorMessages.Format(Strings.Settings_HotkeyStatus_Disabled, InAppCaptureShortcut),
         };
         CanRequestPermission = _hotkey.CanRequestPermission;
     }
