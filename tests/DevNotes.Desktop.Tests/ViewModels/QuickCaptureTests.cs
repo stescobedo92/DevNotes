@@ -1,11 +1,13 @@
 using Avalonia.Headless.XUnit;
 using DevNotes.Application.Notes;
 using DevNotes.Application.Settings;
+using DevNotes.Application.Vaults;
 using DevNotes.Desktop.Resources;
 using DevNotes.Desktop.Services;
 using DevNotes.Desktop.Tests.Support;
 using DevNotes.Desktop.ViewModels;
 using DevNotes.Domain.Notes;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DevNotes.Desktop.Tests.ViewModels;
 
@@ -127,6 +129,40 @@ public sealed class QuickCaptureTests
 
         harness.Drafts.Stored.Should().BeNull();
         harness.Drafts.Clears.Should().BeGreaterThan(0);
+    }
+
+    [AvaloniaFact]
+    public async Task Draft_IsStoredAfterAQuietPeriod_AndATimerOvertakenByASaveDoesNotBringItBack()
+    {
+        await using var harness = await DesktopHarness.StartAsync(new AvaloniaUiDispatcher(), seed: SampleVault.Seed);
+        var time = new FakeTimeProvider();
+        var dispatcher = new QueuedUiDispatcher();
+        using var capture = new QuickCaptureViewModel(
+            harness.Get<IVaultSessionManager>(),
+            harness.Get<INotificationService>(),
+            harness.Drafts,
+            time,
+            dispatcher);
+
+        capture.Text = "Pendiente";
+        time.Advance(QuickCaptureViewModel.DraftDelay - TimeSpan.FromMilliseconds(1));
+        dispatcher.RunPending();
+        harness.Drafts.Saves.Should().Be(0, "the draft waits for the quiet period");
+
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        harness.Drafts.Saves.Should().Be(0, "the timer thread only asks for a turn on the UI thread");
+        dispatcher.RunPending();
+        harness.Drafts.Stored.Should().Be(new CaptureDraft(string.Empty, "Pendiente", string.Empty));
+
+        // The timer fires while the note is being written and gets its turn once the draft was cleared.
+        capture.Text = "Pendiente y guardada";
+        time.Advance(QuickCaptureViewModel.DraftDelay);
+        await capture.SaveCommand.ExecuteAsync(null);
+        harness.Drafts.Stored.Should().BeNull();
+        dispatcher.RunPending();
+
+        harness.Drafts.Stored.Should().BeNull("a note that was saved is never offered again as a draft");
+        harness.VaultFolder.Exists("pendiente-y-guardada.md").Should().BeTrue();
     }
 
     [AvaloniaFact]

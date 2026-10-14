@@ -26,9 +26,13 @@ ve todas las pulsaciones del sistema.
   arrancar, sino desde Ajustes con un botón explícito; hasta entonces el atajo se marca como no
   disponible. En Wayland el gancho necesita permisos sobre los dispositivos de entrada; si no los
   tiene, el fallo se reporta como "no disponible" con la explicación.
-- **Degradación:** en todos los casos el mismo atajo funciona dentro de la app (`capture.quick`
-  en la paleta y en las teclas de la ventana), y el estado real (activo, no disponible, fallido y
-  por qué) se muestra en Ajustes. El atajo se puede desactivar.
+- **Degradación:** en todos los casos la captura se abre también desde dentro de la app con el
+  comando `capture.quick` (paleta y teclas de la ventana). Ese atajo interno es **fijo** y
+  distinto del global: `Ctrl+Alt+N` en Windows y Linux, `Cmd+Option+N` en macOS, y no cambia
+  cuando se configura otra combinación global (en macOS ni siquiera coincide con la
+  predeterminada, que es `Control+Option+N`). Ajustes muestra el estado real del atajo global
+  (activo, no disponible, fallido y por qué) y, cuando no está disponible o está desactivado,
+  nombra el atajo interno que sigue funcionando. El atajo global se puede desactivar.
 
 Se evaluó implementar `RegisterEventHotKey` (Carbon) en macOS y `XGrabKey` en X11 para evitar el
 gancho también allí; se pospone hasta poder probarlos en esas plataformas.
@@ -55,3 +59,5 @@ explica y no se pierde el texto.
 - El comportamiento en macOS y Linux está implementado según la documentación de SharpHook 8 y
   compilado en CI, pero **no se ha probado en esas plataformas** en esta fase.
 - Un solo atajo global; combinaciones adicionales (por ejemplo, "mostrar DevNotes") quedan fuera.
+- El atajo interno no es configurable: hacer que siga al global exigiría que `ShortcutKey`
+  distinguiera `Ctrl` de `Cmd` en macOS y enlaces de teclado dinámicos en la ventana.

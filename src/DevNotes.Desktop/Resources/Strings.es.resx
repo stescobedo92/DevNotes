@@ -264,9 +264,9 @@
   <data name="Settings_GlobalHotkey" xml:space="preserve"><value>Atajo</value></data>
   <data name="Settings_HotkeyHint" xml:space="preserve"><value>Por ejemplo Ctrl+Alt+N: Ctrl, Alt o Win más una letra, una cifra o una tecla de función.</value></data>
   <data name="Settings_HotkeyStatus_Active" xml:space="preserve"><value>Activo en este sistema.</value></data>
-  <data name="Settings_HotkeyStatus_Unavailable" xml:space="preserve"><value>No disponible aquí: {0}. Dentro de DevNotes el atajo sigue abriendo la captura.</value></data>
+  <data name="Settings_HotkeyStatus_Unavailable" xml:space="preserve"><value>No disponible aquí: {0}. Dentro de DevNotes, {1} sigue abriendo la captura.</value></data>
   <data name="Settings_HotkeyStatus_Failed" xml:space="preserve"><value>No se pudo registrar: {0}</value></data>
-  <data name="Settings_HotkeyStatus_Disabled" xml:space="preserve"><value>Desactivado. Dentro de DevNotes el atajo sigue abriendo la captura.</value></data>
+  <data name="Settings_HotkeyStatus_Disabled" xml:space="preserve"><value>Desactivado. Dentro de DevNotes, {0} sigue abriendo la captura.</value></data>
   <data name="Settings_RequestAccessibility" xml:space="preserve"><value>Conceder acceso…</value></data>
   <data name="Error_Hotkey" xml:space="preserve"><value>No es un atajo válido.</value></data>
   <data name="Settings_Projects" xml:space="preserve"><value>Proyectos</value></data>

@@ -33,7 +33,13 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         "CA2213:Disposable fields should be disposed",
         Justification = "Writers queued behind a disposal must still be able to take and release it; no wait handle is ever allocated.")]
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+
+    // Admitting a reader and noticing that the last one left are decided under this gate, together
+    // with the disposed flag: a count read outside it can be stale by the time it is acted on.
+    private readonly Lock _readerGate = new();
+    private readonly TaskCompletionSource _readersDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private SqliteConnection? _keepAlive;
+    private int _readers;
     private int _disposed;
 
     private SqliteNoteIndex(string connectionString, string? databasePath, ILogger<SqliteNoteIndex> logger)
@@ -287,6 +293,19 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         await _writeGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Same for the readers in flight (a list refresh overtaken by the close): the pool is only
+            // cleared once the last of them has returned its connection. One opened after that would
+            // go back to the pool and keep the file locked, so a reader that starts late opens nothing
+            // (see EnterRead).
+            lock (_readerGate)
+            {
+                if (_readers == 0)
+                {
+                    _readersDrained.TrySetResult();
+                }
+            }
+
+            await _readersDrained.Task.ConfigureAwait(false);
             _keepAlive?.Dispose();
             _keepAlive = null;
             ReleasePooledConnections();
@@ -510,10 +529,43 @@ public sealed partial class SqliteNoteIndex : INoteIndex
         return Task.Run(
             () =>
             {
-                using var connection = Open();
-                return query(connection);
+                EnterRead();
+                try
+                {
+                    using var connection = Open();
+                    return query(connection);
+                }
+                finally
+                {
+                    ExitRead();
+                }
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Admits a reader unless the index is closed. The flag is set before the close looks at the
+    /// count, so either the close sees this reader and waits for it, or this reader sees the close
+    /// and opens nothing.
+    /// </summary>
+    private void EnterRead()
+    {
+        lock (_readerGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            _readers++;
+        }
+    }
+
+    private void ExitRead()
+    {
+        lock (_readerGate)
+        {
+            if (--_readers == 0 && _disposed != 0)
+            {
+                _readersDrained.TrySetResult();
+            }
+        }
     }
 
     private async Task WriteAsync(Action<SqliteConnection, SqliteTransaction> work, CancellationToken cancellationToken)

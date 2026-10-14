@@ -50,15 +50,17 @@ public sealed class HotkeyGestureTests
     [Fact]
     public void Normalize_RepairsHotkeyAndProjects()
     {
+        // "Absolute" depends on the system: a Windows path is not one on Linux or macOS.
+        var repository = OperatingSystem.IsWindows() ? "C:\\src\\azure\\" : "/src/azure/";
         var settings = new AppSettings
         {
             QuickCapture = new QuickCaptureSettings { Hotkey = "ctrl + alt + k", GlobalHotkeyEnabled = false },
             Projects =
             [
-                new ProjectSettings("  Azure ", "C:\\src\\azure\\"),
+                new ProjectSettings("  Azure ", $"  {repository} "),
                 new ProjectSettings("AZURE", null),
                 new ProjectSettings("relative", "src/relative"),
-                new ProjectSettings("   ", "C:\\x"),
+                new ProjectSettings("   ", repository),
                 null!,
             ],
         };
@@ -67,7 +69,7 @@ public sealed class HotkeyGestureTests
 
         normalized.QuickCapture.Should().Be(new QuickCaptureSettings { Hotkey = "Ctrl+Alt+K", GlobalHotkeyEnabled = false });
         normalized.Projects.Should().Equal(
-            new ProjectSettings("Azure", "C:\\src\\azure\\"),
+            new ProjectSettings("Azure", repository),
             new ProjectSettings("relative", null));
         new AppSettings { QuickCapture = new QuickCaptureSettings { Hotkey = "broken" } }.Normalize().QuickCapture.Hotkey.Should().Be("Ctrl+Alt+N");
     }

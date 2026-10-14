@@ -264,9 +264,9 @@
   <data name="Settings_GlobalHotkey" xml:space="preserve"><value>Shortcut</value></data>
   <data name="Settings_HotkeyHint" xml:space="preserve"><value>For example Ctrl+Alt+N: one of Ctrl, Alt or Win plus a letter, a digit or a function key.</value></data>
   <data name="Settings_HotkeyStatus_Active" xml:space="preserve"><value>Active on this system.</value></data>
-  <data name="Settings_HotkeyStatus_Unavailable" xml:space="preserve"><value>Not available here: {0}. Inside DevNotes the shortcut still opens the capture.</value></data>
+  <data name="Settings_HotkeyStatus_Unavailable" xml:space="preserve"><value>Not available here: {0}. Inside DevNotes, {1} still opens the capture.</value></data>
   <data name="Settings_HotkeyStatus_Failed" xml:space="preserve"><value>Could not be registered: {0}</value></data>
-  <data name="Settings_HotkeyStatus_Disabled" xml:space="preserve"><value>Disabled. Inside DevNotes the shortcut still opens the capture.</value></data>
+  <data name="Settings_HotkeyStatus_Disabled" xml:space="preserve"><value>Disabled. Inside DevNotes, {0} still opens the capture.</value></data>
   <data name="Settings_RequestAccessibility" xml:space="preserve"><value>Grant access…</value></data>
   <data name="Error_Hotkey" xml:space="preserve"><value>That is not a valid shortcut.</value></data>
   <data name="Settings_Projects" xml:space="preserve"><value>Projects</value></data>
