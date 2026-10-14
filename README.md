@@ -4,8 +4,8 @@ DevNotes is a local-first desktop notebook for developers on Windows, Linux, and
 Your notes remain ordinary Markdown files; a rebuildable SQLite FTS5 index makes technical
 notes, code snippets, design decisions, and runbooks searchable.
 
-> **Status:** under development, through Phase 2 (metadata and quick capture). Run from source
-> using the instructions below. Installers and release packaging are planned for a later phase.
+> **Status:** under development, through Phase 2 (metadata and quick capture). Download a portable
+> package from [Releases](https://github.com/stescobedo92/DevNotes/releases) or run from source below.
 > See the [architecture decision records](docs/adr/README.md) for design decisions and limitations.
 
 ## Features
@@ -29,7 +29,30 @@ notes, code snippets, design decisions, and runbooks searchable.
 - **Keyboard access and appearance:** command palette, light/dark/system themes, adjustable editor
   font size, and English and Spanish interfaces.
 
-## Requirements
+## Download and run
+
+Choose the package for your operating system and processor from
+[GitHub Releases](https://github.com/stescobedo92/DevNotes/releases). Each package includes the
+.NET runtime, so installing the SDK or runtime separately is unnecessary.
+
+| Platform | Release asset | Launch after extraction |
+| --- | --- | --- |
+| Windows x64 | `DevNotes-v<version>-win-x64.zip` | `DevNotes.exe` |
+| Linux x64 | `DevNotes-v<version>-linux-x64.tar.gz` | `./DevNotes` |
+| macOS Intel | `DevNotes-v<version>-osx-x64.tar.gz` | `DevNotes.app` |
+| macOS Apple silicon | `DevNotes-v<version>-osx-arm64.tar.gz` | `DevNotes.app` |
+
+Extract the entire archive, then open its `DevNotes-v<version>-<runtime>` directory to launch;
+the adjacent files are required. Linux needs a desktop session and the native libraries listed
+below. The macOS packages target macOS 15 or newer. Windows binaries are unsigned, and macOS
+bundles use an ad-hoc signature without Developer ID signing or notarization; operating-system
+security policies may restrict launching them. Installers and automatic updates are not included.
+
+Each release contains `SHA256SUMS` for verifying downloads. See the
+[release guide](build/README.md) for checksum commands, version policy, and publishing instructions.
+Releases use [Semantic Versioning 2.0.0](https://semver.org/), with Git tags such as `v0.1.0`.
+
+## Requirements for building from source
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
   [`global.json`](global.json) requests `10.0.100`, permits newer stable `10.0` feature bands,
@@ -187,7 +210,9 @@ integration, and Avalonia headless UI interactions.
 The [CI workflow](.github/workflows/ci.yml) runs Release builds and tests on Windows, Ubuntu, and
 macOS, checks formatting on Ubuntu, and uploads test results and coverage as per-platform artifacts.
 It runs for pull requests, pushes to `main`, and manual **Run workflow** requests from GitHub Actions.
-See [`build/`](build/README.md) for the current packaging scope.
+The [release workflow](.github/workflows/release.yml) runs these checks alongside packaging Windows,
+Linux, and both macOS architectures. Pushing a valid version tag publishes all packages together
+after the checks pass; manual branch runs build packages without publishing. See the [release guide](build/README.md).
 
 ## Benchmarks
 
@@ -218,7 +243,7 @@ src/
 tests/                     One test project per layer
 benchmarks/                BenchmarkDotNet indexing and search workloads
 docs/adr/                  Architecture decision records
-build/                     Packaging scope; release scripts are not implemented yet
+build/                     Version validation, packaging scripts, and release guide
 ```
 
 Dependency versions are centralized in [`Directory.Packages.props`](Directory.Packages.props);
@@ -232,7 +257,8 @@ logic are separated from storage and UI adapters. The desktop application compos
 - The native Markdown preview does not render arbitrary HTML or download remote images.
 - The index is rebuilt when corruption is detected while opening a vault. If corruption occurs
   during a session, reopen the vault before retrying searches.
-- Installers, release publishing, and integrated Git synchronization are not implemented yet.
+- Installers, automatic updates, trusted platform signing, and integrated Git synchronization
+  are not implemented yet. Releases provide portable archives.
 
 See the [ADR index](docs/adr/README.md) for further limitations and rationale. The index is in English;
 the accepted historical ADR documents currently remain in Spanish.

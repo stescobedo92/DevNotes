@@ -23,8 +23,9 @@ ADR documents are written in Spanish.
 | [0014](0014-captura-rapida-y-hotkey-global.md) | Quick capture and cross-platform global shortcuts | Accepted |
 | [0015](0015-proyecto-activo-y-rama-git.md) | Active-project and Git-branch detection without LibGit2Sharp | Accepted |
 
-Future phases will document integrated Git operations (originally planned with LibGit2Sharp in
-Phase 4), packaging, and distribution (`.exe`, `.deb`, `.dmg`) when implemented.
+The [release guide](../../build/README.md) describes the current SemVer policy and portable packages
+for Windows, Linux, and macOS. Future phases will document integrated Git operations (originally
+planned with LibGit2Sharp in Phase 4), installers, trusted platform signing, and automatic updates.
 
 ## Known limitations through Phase 2
 
