@@ -1,8 +1,12 @@
-# build/
+# Build and packaging
 
-Scripts de empaquetado por plataforma (`.exe`, `.deb`, `.dmg`).
+This directory is reserved for platform-specific packaging scripts and installers (`.exe`, `.deb`,
+and `.dmg`). Packaging and release publishing are planned for a later development phase; there are
+no installer scripts here yet.
 
-Todavía vacío a propósito: el empaquetado y la publicación de releases se implementan en una
-fase posterior (ver la sección "Empaquetado y distribución" de la especificación). La Fase 0
-solo incluye el CI mínimo (`.github/workflows/ci.yml`): restaurar, verificar formato, compilar
-con analizadores y ejecutar los tests en Windows, Linux y macOS.
+The current [CI workflow](../.github/workflows/ci.yml) restores dependencies, verifies formatting,
+builds with analyzers enabled, and runs tests on Windows, Linux, and macOS. Test and coverage reports
+are uploaded as workflow artifacts. These artifacts are test evidence, not desktop installers.
+
+For local restore, build, test, benchmark, and run commands, see the
+[main README](../README.md#build-test-and-ci).
