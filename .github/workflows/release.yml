@@ -104,7 +104,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
           RELEASE_RUNTIME: ${{ matrix.runtime }}
-        run: ./build/Publish-Release.ps1 -Version $env:RELEASE_VERSION -Runtime $env:RELEASE_RUNTIME
+        run: ./build/Publish-Release.ps1 -Version $env:RELEASE_VERSION -Runtime $env:RELEASE_RUNTIME -SmokeTest:$IsMacOS
 
       - name: Upload package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

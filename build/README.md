@@ -75,6 +75,9 @@ pwsh ./build/Publish-Release.ps1 -Version 0.1.0 -Runtime win-x64 -OutputDirector
 Choose a runtime from the table above. macOS bundling requires macOS and its `codesign` tool.
 The script refuses to overwrite an existing archive. Local packaging does not replace the
 workflow's formatting and test checks or publish a release.
+macOS archives are extracted and their signatures verified before upload. In CI, `-SmokeTest`
+also starts the extracted macOS executable with isolated app data to check runtime loading,
+then stops that test process. Local packaging does not launch the app unless this switch is supplied.
 
 ## Publish a release
 

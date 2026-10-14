@@ -14,7 +14,10 @@ param(
     [ValidateSet('win-x64', 'linux-x64', 'osx-x64', 'osx-arm64')]
     [string] $Runtime,
 
-    [string] $OutputDirectory = (Join-Path $PSScriptRoot '../artifacts/release')
+    [string] $OutputDirectory = (Join-Path $PSScriptRoot '../artifacts/release'),
+
+    # Opt in only on a disposable macOS desktop runner; starts the extracted application.
+    [switch] $SmokeTest
 )
 
 Set-StrictMode -Version Latest
@@ -29,8 +32,58 @@ function Invoke-NativeCommand {
     }
 }
 
+function Invoke-MacOSSmokeTest {
+    param([string] $ExecutablePath, [string] $DataDirectory)
+
+    New-Item -ItemType Directory -Path $DataDirectory | Out-Null
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $ExecutablePath
+    $startInfo.WorkingDirectory = $DataDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.Environment['DEVNOTES_DATA_DIR'] = $DataDirectory
+    $startInfo.Environment['DEVNOTES_PROJECT_DIR'] = $DataDirectory
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $started = $false
+    try {
+        $started = $process.Start()
+        if (-not $started) {
+            throw 'The packaged application could not be started.'
+        }
+        # Drain both pipes concurrently so a verbose startup cannot block the child.
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        if ($process.WaitForExit(5000)) {
+            $diagnostics = @($stdout.GetAwaiter().GetResult(), $stderr.GetAwaiter().GetResult())
+            $logDirectory = Join-Path $DataDirectory 'logs'
+            if (Test-Path -LiteralPath $logDirectory) {
+                foreach ($logFile in (Get-ChildItem -LiteralPath $logDirectory -Filter '*.log' -File)) {
+                    $diagnostics += Get-Content -LiteralPath $logFile.FullName -Tail 100
+                }
+            }
+            throw "Packaged application exited during startup (code $($process.ExitCode)).`n$($diagnostics -join "`n")"
+        }
+        Write-Host 'Extracted macOS application stayed running for the five-second startup check.'
+    }
+    finally {
+        # Only stop the exact child created here; never find processes by executable name.
+        if ($started -and -not $process.HasExited) {
+            $process.Kill()
+            if (-not $process.WaitForExit(5000)) {
+                throw 'Could not stop the packaged application after its startup check.'
+            }
+        }
+        $process.Dispose()
+    }
+}
+
 $release = & (Join-Path $PSScriptRoot 'Get-ReleaseVersion.ps1') -Tag "v$Version"
 $platform = $Runtime.Split('-')[0]
+if ($SmokeTest -and $platform -ne 'osx') {
+    throw 'The optional startup smoke test is only supported for macOS packages.'
+}
 if (($platform -eq 'win' -and -not $IsWindows) -or
     ($platform -eq 'linux' -and -not $IsLinux) -or
     ($platform -eq 'osx' -and -not $IsMacOS)) {
@@ -154,20 +207,69 @@ try {
 "@ | Set-Content -LiteralPath $plistPath -Encoding utf8NoBOM
         Invoke-NativeCommand -Command '/usr/bin/plutil' -Arguments @('-lint', $plistPath)
 
-        # Ad-hoc signatures provide local code integrity (required on Apple Silicon).
-        # They are not Developer ID signatures and do not provide notarization or Gatekeeper trust.
-        foreach ($nativeFile in (Get-ChildItem -LiteralPath $publishPath -Recurse -File)) {
-            $fileType = & /usr/bin/file -b $nativeFile.FullName
-            if ($LASTEXITCODE -ne 0) {
-                throw "Could not inspect native binary: $($nativeFile.FullName)"
+        # Apple requires non-Mach-O content outside code directories. Relative links preserve
+        # .NET's publish layout without signing managed assemblies through fragile xattrs.
+        # https://developer.apple.com/library/archive/technotes/tn2206/_index.html
+        # https://docs.avaloniaui.net/docs/deployment/macos#sandbox-and-bundle
+        $frameworksPath = Join-Path $contentsPath 'Frameworks'
+        New-Item -ItemType Directory -Path $frameworksPath | Out-Null
+        $nativeCodePaths = [System.Collections.Generic.List[string]]::new()
+        $relativeLinks = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+        foreach ($item in (Get-ChildItem -LiteralPath $publishPath -Force)) {
+            $isMachO = $false
+            if (-not $item.PSIsContainer) {
+                $fileType = & /usr/bin/file -b $item.FullName
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Could not inspect published file: $($item.FullName)"
+                }
+                $isMachO = $fileType -match 'Mach-O'
             }
-            if ($fileType -match 'Mach-O') {
-                Invoke-NativeCommand -Command '/usr/bin/codesign' -Arguments @(
-                    '--force', '--sign', '-', '--timestamp=none', $nativeFile.FullName
-                )
+
+            if ($isMachO -and $item.Extension -ne '.dylib') {
+                # Signing the main executable here would sign its enclosing bundle too early.
+                if ($item.Name -ne $appHostName) {
+                    $nativeCodePaths.Add($item.FullName)
+                    # Runtime helpers must be discoverable beside both the managed entry point
+                    # and the physical CoreCLR library (which resides in Frameworks).
+                    foreach ($aliasFolder in @('Resources', 'Frameworks')) {
+                        $aliasPath = "$aliasFolder/$($item.Name)"
+                        $aliasTarget = "../MacOS/$($item.Name)"
+                        New-Item -ItemType SymbolicLink -Path (Join-Path $contentsPath $aliasPath) -Target $aliasTarget | Out-Null
+                        $relativeLinks.Add($aliasPath, $aliasTarget)
+                    }
+                }
+                continue
+            }
+
+            $destinationFolder = if ($isMachO) { 'Frameworks' } else { 'Resources' }
+            $destinationPath = Join-Path (Join-Path $contentsPath $destinationFolder) $item.Name
+            Move-Item -LiteralPath $item.FullName -Destination $destinationPath
+            $aliasTarget = "../$destinationFolder/$($item.Name)"
+            New-Item -ItemType SymbolicLink -Path $item.FullName -Target $aliasTarget | Out-Null
+            $relativeLinks.Add("MacOS/$($item.Name)", $aliasTarget)
+            if ($isMachO) {
+                $nativeCodePaths.Add($destinationPath)
+                # .NET resolves the entry assembly's real path, making Resources its app root.
+                # Native probing from that directory still needs the complete runtime payload.
+                $aliasPath = "Resources/$($item.Name)"
+                New-Item -ItemType SymbolicLink -Path (Join-Path $contentsPath $aliasPath) -Target $aliasTarget | Out-Null
+                $relativeLinks.Add($aliasPath, $aliasTarget)
             }
         }
-        # Sign nested binaries first and the bundle last; --deep is only used for verification.
+        # Hostpolicy resolves CoreCLR's physical directory before locating its core assembly.
+        $coreLibAlias = 'Frameworks/System.Private.CoreLib.dll'
+        $coreLibTarget = '../Resources/System.Private.CoreLib.dll'
+        New-Item -ItemType SymbolicLink -Path (Join-Path $contentsPath $coreLibAlias) -Target $coreLibTarget | Out-Null
+        $relativeLinks.Add($coreLibAlias, $coreLibTarget)
+
+        # Ad-hoc signatures provide local code integrity (required on Apple Silicon).
+        # They are not Developer ID signatures and do not provide notarization or Gatekeeper trust.
+        foreach ($nativeCodePath in $nativeCodePaths) {
+            Invoke-NativeCommand -Command '/usr/bin/codesign' -Arguments @(
+                '--force', '--sign', '-', '--timestamp=none', $nativeCodePath
+            )
+        }
+        # Sign the bundle (including its main executable) last; --deep is only for verification.
         Invoke-NativeCommand -Command '/usr/bin/codesign' -Arguments @(
             '--force', '--sign', '-', '--timestamp=none',
             '--entitlements', (Join-Path $PSScriptRoot 'macos-entitlements.plist'), $appBundle
@@ -184,6 +286,35 @@ try {
     else {
         # Native tar retains executable permissions and the macOS bundle hierarchy.
         Invoke-NativeCommand -Command 'tar' -Arguments @('-czf', $stagedArchive, '-C', $stagingPath, $packageName)
+    }
+
+    if ($platform -eq 'osx') {
+        # Verify the actual distributable after extraction, not only the source bundle.
+        # This catches broken relative links, lost executable permissions, and signature damage.
+        $verificationPath = Join-Path $stagingPath 'verification'
+        New-Item -ItemType Directory -Path $verificationPath | Out-Null
+        Invoke-NativeCommand -Command 'tar' -Arguments @('-xzf', $stagedArchive, '-C', $verificationPath)
+        $extractedBundle = Join-Path (Join-Path $verificationPath $packageName) 'DevNotes.app'
+        $extractedContents = Join-Path $extractedBundle 'Contents'
+        $extractedMacOS = Join-Path $extractedContents 'MacOS'
+        foreach ($relativePath in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $extractedMacOS $relativePath) -PathType Leaf)) {
+                throw "The extracted bundle cannot resolve required asset: $relativePath"
+            }
+        }
+        foreach ($relativeLink in $relativeLinks.Keys) {
+            $linkPath = Join-Path $extractedContents $relativeLink
+            $link = Get-Item -LiteralPath $linkPath
+            if ($link.LinkType -ne 'SymbolicLink' -or $link.Target -cne $relativeLinks[$relativeLink] -or
+                -not (Test-Path -LiteralPath $linkPath)) {
+                throw "The extracted bundle lost a relative symbolic link: $relativeLink"
+            }
+        }
+        Invoke-NativeCommand -Command '/bin/test' -Arguments @('-x', (Join-Path $extractedMacOS $appHostName))
+        Invoke-NativeCommand -Command '/usr/bin/codesign' -Arguments @('--verify', '--strict', '--deep', $extractedBundle)
+        if ($SmokeTest) {
+            Invoke-MacOSSmokeTest -ExecutablePath (Join-Path $extractedMacOS $appHostName) -DataDirectory (Join-Path $stagingPath 'smoke-data')
+        }
     }
 
     # Move only a complete archive; never replace an already published filename.
